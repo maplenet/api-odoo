@@ -185,9 +185,30 @@ def get_contacts():
         return {"contacts": result}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    
-# Listar contactos paginados con filtro de nombre y campos especificos
+
+# TODO: Realizar más endpoints de listados en función de más parámetros requeridos 
+
+# Lista contactos paginados y filtrados por nombre y empresa a la que pertenecen, y campos especificos
 @app.get("/contacts/paginated")
+def get_contacts_paginated(offset: int = Query(0), limit: int = Query(10), query: str = Query(None)):
+    try:
+        domain = []
+        if query:
+            domain = ['|', ['name', 'ilike', query], ['parent_id.name', 'ilike', query]]
+        result = models.execute_kw(
+            db, uid, password,
+            'res.partner',
+            'search_read',
+            [domain],
+            {'offset': offset, 'limit': limit, 'fields': ['name', 'email', 'phone', 'parent_id']}
+        )
+        return {"contacts": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# Listar contactos paginados con filtro de nombre y campos especificos
+@app.get("/contacts/paginated/name")
 def get_contacts_paginated(offset: int = Query(0), limit: int = Query(10), query: str = Query(None)):
     try:
         domain = []
