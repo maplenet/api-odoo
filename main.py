@@ -1,9 +1,16 @@
-from fastapi import FastAPI, HTTPException, Query, File, UploadFile
+from fastapi import FastAPI, HTTPException, Query, Request, Depends
+from fastapi.security import OAuth2PasswordBearer
+from jose import JWTError, jwt
+from datetime import datetime, timedelta, timezone
 import xmlrpc.client
-import base64
-
 
 app = FastAPI()
+
+# Configuración JWT
+SECRET_KEY = "your_secret_key"  # Cambia esto por una clave segura
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
+
 
 # Configuración de conexión a Odoo
 url = 'http://localhost:8069'
@@ -279,3 +286,67 @@ def say_hello(name: str):
 @app.get("/add")
 def add_numbers(a: int, b: int):
     return {"result": a + b}
+
+#--------------------------------------------------------------------Inicio de sesión con JWT
+
+# OAuth2PasswordBearer (URL para obtener el token)
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
+
+# Lista negra para invalidar tokens
+blacklisted_tokens = set()
+
+# Crear un token de acceso
+def create_access_token(username: str, expires_delta: timedelta = None):
+    to_encode = {"sub": username, "iat": datetime.now(timezone.utc)}
+    expire = datetime.now(timezone.utc) + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+# Verificar el token
+def verify_token(token: str = Depends(oauth2_scheme)):
+    try:
+        if token in blacklisted_tokens:
+            raise HTTPException(status_code=401, detail="Token inválido o expirado")
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            raise HTTPException(status_code=401, detail="Token inválido")
+        return username
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Token inválido o expirado")
+
+# Endpoint para inicio de sesión (Login)
+@app.post("/login")
+async def login(request: Request):
+    body = await request.json()
+    username = body.get("username")
+    password = body.get("password")
+
+    if not username or not password:
+        raise HTTPException(status_code=400, detail="Se requieren 'username' y 'password'")
+
+    # Autenticar en Odoo
+    uid = common.authenticate(db, username, password, {})
+    if not uid:
+        raise HTTPException(status_code=401, detail="Credenciales inválidas")
+
+    # Crear token
+    access_token = create_access_token(username)
+    return {"access_token": access_token, "token_type": "bearer"}
+
+# Endpoint protegido (Ejemplo)
+@app.get("/protected")
+def protected_route(username: str = Depends(verify_token)):
+    return {"message": f"Bienvenido {username}, esta es una ruta protegida."}
+
+# Endpoint para cerrar sesión (Logout)
+@app.post("/logout")
+def logout(token: str = Depends(oauth2_scheme)):
+    blacklisted_tokens.add(token)
+    return {"message": "Sesión cerrada exitosamente"}
+
+#--------------------------------------------------------------------Enpoints para el módulo CRM
+
+
+
