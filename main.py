@@ -1,5 +1,7 @@
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, File, UploadFile
 import xmlrpc.client
+import base64
+
 
 app = FastAPI()
 
@@ -68,6 +70,9 @@ def search_contacts(search: dict):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
+
+
 # Obtener IDs de contactos en general
 @app.get("/contacts")
 def get_contacts():
@@ -124,6 +129,106 @@ def create_contact(contact: dict):
         return {"contact_id": contact_id}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    
+# @app.post("/create_contact")
+# async def create_contact(
+#     image: UploadFile = File(None),
+#     **contact_fields  # Captura el resto de los campos dinámicamente
+# ):
+#     try:
+#         # Procesar la imagen si está presente
+#         if image:
+#             image_content = await image.read()
+#             contact_fields["image_1920"] = base64.b64encode(image_content).decode("utf-8")
+
+#         # Convertir `category_id` de cadena a lista de enteros si está presente
+#         if "category_id" in contact_fields:
+#             contact_fields["category_id"] = [
+#                 int(cid) for cid in contact_fields["category_id"].split(",")
+#             ]
+
+#         # Crear el contacto en Odoo
+#         contact_id = models.execute_kw(
+#             db, uid, password,
+#             'res.partner',
+#             'create',
+#             [contact_fields]
+#         )
+#         return {"contact_id": contact_id}
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=str(e))
+
+# Obtener detalles de contacto
+@app.get("/contact/{contact_id}")
+def get_contact(contact_id: int):
+    try:
+        result = models.execute_kw(
+            db, uid, password,
+            'res.partner',
+            'read',
+            [[contact_id]]
+        )
+        return {"contact": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
+# Obtener detalles de todos los contactos
+@app.get("/contacts/list")
+def get_contacts():
+    try:
+        result = models.execute_kw(
+            db, uid, password,
+            'res.partner',
+            'search_read',
+            [[]]
+        )
+        return {"contacts": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
+# Obtener detalles especificos de todos los contactos y el total
+@app.get("/contacts/list/details")
+def get_contacts_details():
+    try:
+        result = models.execute_kw(
+            db, uid, password,
+            'res.partner',
+            'search_read',
+            [[]],
+            {'fields': ['name', 'email', 'phone']}
+        )
+        return {"contacts": result, "total": len(result)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Actualizar un contacto usando patch
+@app.patch("/contact/{contact_id}")
+def update_contact(contact_id: int, contact: dict):
+    try:
+        result = models.execute_kw(
+            db, uid, password,
+            'res.partner',
+            'write',
+            [[contact_id], contact]
+        )
+        return {"success": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
+# Eliminar un contacto
+@app.delete("/contact/{contact_id}")
+def delete_contact(contact_id: int):
+    try:
+        result = models.execute_kw(
+            db, uid, password,
+            'res.partner',
+            'unlink',
+            [[contact_id]]
+        )
+        return {"success": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 #--------------------------------------------------------------------
 # Decir hola
