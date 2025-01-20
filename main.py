@@ -13,10 +13,10 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 
 # Configuración de conexión a Odoo
-url = 'http://localhost:8069'
-db = 'odoo16db'
+url = 'http://192.168.10.98:8069'
+db = 'mydb'
 username = 'admin'
-password = '08b5cacf36383f565a1db2e3b5150bbf8f6dae14'
+password = '3f00bddc1cb13c5063ebea6eb2f940a5e3e031b4'
 
 # Conexión común a Odoo
 common = xmlrpc.client.ServerProxy(f"{url}/xmlrpc/2/common")
