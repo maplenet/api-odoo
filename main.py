@@ -13,10 +13,10 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 
 # Configuración de conexión a Odoo
-url = 'http://192.168.10.98:8069'
-db = 'mydb'
+url = 'http://192.168.10.184:8069'
+db = 'odoo16db'
 username = 'admin'
-password = '3f00bddc1cb13c5063ebea6eb2f940a5e3e031b4'
+password = '0c55a31bbfa992802c0c8ef87fcae9ef294382b1'
 
 # Conexión común a Odoo
 common = xmlrpc.client.ServerProxy(f"{url}/xmlrpc/2/common")
@@ -137,6 +137,46 @@ def create_contact(contact: dict):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     
+# Crear un nuevo contacto básico 
+@app.post("/create_contact_basic")
+def create_contact_basic(contact: dict):
+    try:
+        # Validar que no exista otro contacto con el mismo email o móvil
+        email = contact.get("email")
+        mobile = contact.get("mobile")
+        if not email or not mobile:
+            raise HTTPException(status_code=400, detail="Los campos 'email' y 'mobile' son requeridos.")
+
+        existing_contacts = models.execute_kw(
+            db, uid, password,
+            'res.partner',
+            'search_count',
+            [[
+                '|', ['email', '=', email], ['mobile', '=', mobile]
+            ]]
+        )
+        if existing_contacts > 0:
+            raise HTTPException(status_code=400, detail="Ya existe un contacto con el mismo email o móvil.")
+        
+        # Crear el contacto
+        contact_id = models.execute_kw(
+            db, uid, password,
+            'res.partner',
+            'create',
+            [contact]
+        )
+        
+        # Devolver el resultado incluyendo las líneas extra
+        return {
+            "contact_id": contact_id,
+            "user": email,
+            "password": mobile
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    
 # @app.post("/create_contact")
 # async def create_contact(
 #     image: UploadFile = File(None),
@@ -241,13 +281,13 @@ def get_contacts_details():
             'res.partner',
             'search_read',
             [[]],
-            {'fields': ['name', 'email', 'phone']}
+            {'fields': ['name', 'email', 'mobile']}
         )
         return {"contacts": result, "total": len(result)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# Actualizar un contacto usando patch
+# Actualizar un contacto 
 @app.patch("/contact/{contact_id}")
 def update_contact(contact_id: int, contact: dict):
     try:
@@ -274,18 +314,6 @@ def delete_contact(contact_id: int):
         return {"success": result}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-
-#--------------------------------------------------------------------
-# Decir hola
-@app.get("/hello/{name}")
-def say_hello(name: str):
-    return {"message": f"Hello, {name}!"}
-
-# Sumar dos números
-@app.get("/add")
-def add_numbers(a: int, b: int):
-    return {"result": a + b}
 
 #--------------------------------------------------------------------Inicio de sesión con JWT
 
@@ -316,7 +344,6 @@ def verify_token(token: str = Depends(oauth2_scheme)):
     except JWTError:
         raise HTTPException(status_code=401, detail="Token inválido o expirado")
 
-# Endpoint para inicio de sesión (Login)
 @app.post("/login")
 async def login(request: Request):
     body = await request.json()
@@ -326,16 +353,19 @@ async def login(request: Request):
     if not username or not password:
         raise HTTPException(status_code=400, detail="Se requieren 'username' y 'password'")
 
-    # Autenticar en Odoo
-    uid = common.authenticate(db, username, password, {})
-    if not uid:
+    # Obtener
+    contacts = get_contacts_details().get("contacts")
+
+    # Verificar si existe un contacto con email == username y mobile == password
+    matched_contact = next((contact for contact in contacts if contact['email'] == username and contact['mobile'] == password), None)
+    if not matched_contact:
         raise HTTPException(status_code=401, detail="Credenciales inválidas")
 
-    # Crear token
+    # Crear el token si se encuentra coincidencia
     access_token = create_access_token(username)
     return {"access_token": access_token, "token_type": "bearer"}
 
-# Endpoint protegido (Ejemplo)
+# Endpoint protegido para probar endpoints con JWT
 @app.get("/protected")
 def protected_route(username: str = Depends(verify_token)):
     return {"message": f"Bienvenido {username}, esta es una ruta protegida."}
@@ -346,7 +376,47 @@ def logout(token: str = Depends(oauth2_scheme)):
     blacklisted_tokens.add(token)
     return {"message": "Sesión cerrada exitosamente"}
 
-#--------------------------------------------------------------------Enpoints para el módulo CRM
+#--------------------------------------------------------------------Enpoints para el módulo Puntos de Venta
+
+# Obtener todos los puntos de venta
+@app.get("/pos")
+def get_pos():
+    try:
+        result = models.execute_kw(
+            db, uid, password,
+            'pos.config',
+            'search_read',
+            [[]]
+        )
+        return {"pos": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Cerar una sesión de punto de venta 
+@app.patch("/pos/close_sessions/{pos_id}")
+def close_pos_sessions(pos_id: int):
+    try:
+        # Buscar sesiones abiertas para el punto de venta especificado
+        open_sessions = models.execute_kw(
+            db, uid, password, 'pos.session', 'search',
+            [[['config_id', '=', pos_id], ['state', '=', 'opened']]]
+        )
+
+        if not open_sessions:
+            return {"message": f"No hay sesiones abiertas para el punto de venta con ID {pos_id}."}
+
+        # Cerrar cada sesión abierta
+        models.execute_kw(
+            db, uid, password, 'pos.session', 'action_pos_session_closing_control',
+            [open_sessions]
+        )
+
+        return {
+            "message": f"Se cerraron {len(open_sessions)} sesiones abiertas para el punto de venta con ID {pos_id}."
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al cerrar las sesiones: {str(e)}")
 
 
 
