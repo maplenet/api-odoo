@@ -2,9 +2,28 @@ from fastapi import FastAPI, HTTPException, Query, Request, Depends
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from datetime import datetime, timedelta, timezone
+from fastapi.middleware.cors import CORSMiddleware
 import xmlrpc.client
 
 app = FastAPI()
+
+
+# Configura las opciones de CORS
+origins = [
+    "http://localhost",  # Origenes permitidos
+    "http://localhost:4321",  # Otro origen permitido
+    "https://maplenet-api.com",  # Dominios en producción
+    "https://maplenet.com.bo",  # Dominios en producción
+
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,  # Lista de orígenes permitidos
+    allow_credentials=True,  # Permitir cookies y autenticación
+    allow_methods=["*"],  # Métodos permitidos (GET, POST, etc.)
+    allow_headers=["*"],  # Encabezados permitidos
+)
 
 # Configuración JWT
 SECRET_KEY = "your_secret_key"  # Cambia esto por una clave segura
@@ -76,8 +95,6 @@ def search_contacts(search: dict):
         return {"contacts": result}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-
 
 
 # Obtener IDs de contactos en general
@@ -272,7 +289,7 @@ def get_contacts_paginated(offset: int = Query(0), limit: int = Query(10), query
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     
-# Obtener detalles especificos de todos los contactos y el total
+# Obtener detalles especificos de todos los contactos, es decir nombre, correo, celular, direccion, las ordenes de venta que tiene este contacto y el total de registros
 @app.get("/contacts/list/details")
 def get_contacts_details():
     try:
@@ -281,7 +298,7 @@ def get_contacts_details():
             'res.partner',
             'search_read',
             [[]],
-            {'fields': ['name', 'email', 'mobile']}
+            {'fields': ['name', 'email', 'mobile', 'street', 'city', 'country_id', 'pos_order_ids', 'sale_order_ids']}
         )
         return {"contacts": result, "total": len(result)}
     except Exception as e:
