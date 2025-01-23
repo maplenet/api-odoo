@@ -36,6 +36,8 @@ url = 'http://192.168.10.184:8069'
 db = 'odoo16db'
 username = 'admin'
 password = '0c55a31bbfa992802c0c8ef87fcae9ef294382b1'
+# password = '9faa1992b657bf4bd18d0743fe6cd0ab6713221c'
+
 
 # Conexión común a Odoo
 common = xmlrpc.client.ServerProxy(f"{url}/xmlrpc/2/common")
@@ -192,35 +194,6 @@ def create_contact_basic(contact: dict):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-    
-# @app.post("/create_contact")
-# async def create_contact(
-#     image: UploadFile = File(None),
-#     **contact_fields  # Captura el resto de los campos dinámicamente
-# ):
-#     try:
-#         # Procesar la imagen si está presente
-#         if image:
-#             image_content = await image.read()
-#             contact_fields["image_1920"] = base64.b64encode(image_content).decode("utf-8")
-
-#         # Convertir `category_id` de cadena a lista de enteros si está presente
-#         if "category_id" in contact_fields:
-#             contact_fields["category_id"] = [
-#                 int(cid) for cid in contact_fields["category_id"].split(",")
-#             ]
-
-#         # Crear el contacto en Odoo
-#         contact_id = models.execute_kw(
-#             db, uid, password,
-#             'res.partner',
-#             'create',
-#             [contact_fields]
-#         )
-#         return {"contact_id": contact_id}
-#     except Exception as e:
-#         raise HTTPException(status_code=500, detail=str(e))
 
 # Obtener detalles de contacto
 @app.get("/contact/{contact_id}")
@@ -434,6 +407,97 @@ def close_pos_sessions(pos_id: int):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al cerrar las sesiones: {str(e)}")
+
+#--------------------------------------------------------------------Enpoints para el módulo ventas
+
+# Obtener los datos de una venta
+@app.get("/sale_order/{order_id}")
+def get_sale_order(order_id: int):
+    try:
+        result = models.execute_kw(
+            db, uid, password,
+            'sale.order',
+            'read',
+            [[order_id]]
+        )
+        return {"sale_order": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Obtener todas las ventas
+@app.get("/sale_orders")
+def get_sale_orders():
+    try:
+        result = models.execute_kw(
+            db, uid, password,
+            'sale.order',
+            'search_read',
+            [[]]
+        )
+        return {"sale_orders": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Crear una nueva venta
+@app.post("/create_sale_order")
+def create_sale_order(sale_order: dict):
+    try:
+        sale_order_id = models.execute_kw(
+            db, uid, password,
+            'sale.order',
+            'create',
+            [sale_order]
+        )
+        return {"sale_order_id": sale_order_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Ejemplo de venta en formato JSON
+# {
+#     "partner_id": 1,
+#     "order_line": [
+#         {
+#             "product_id": 1,
+#             "product_uom_qty": 2,
+#             "price_unit": 100
+#         },
+#         {
+#             "product_id": 2,
+#             "product_uom_qty": 1,
+#             "price_unit": 200
+#         }
+#     ]
+# }
+
+
+# Actualizar una venta
+@app.patch("/sale_order/{order_id}")
+def update_sale_order(order_id: int, sale_order: dict):
+    try:
+        result = models.execute_kw(
+            db, uid, password,
+            'sale.order',
+            'write',
+            [[order_id], sale_order]
+        )
+        return {"success": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Eliminar una venta
+@app.delete("/sale_order/{order_id}")
+def delete_sale_order(order_id: int):
+    try:
+        result = models.execute_kw(
+            db, uid, password,
+            'sale.order',
+            'unlink',
+            [[order_id]]
+        )
+        return {"success": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 
 
