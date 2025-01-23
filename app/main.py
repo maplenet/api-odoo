@@ -1,0 +1,29 @@
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from app.routes import auth, contacts, sales, pos, system
+
+app = FastAPI()
+
+# CORS Configuration
+origins = [
+    "http://localhost",
+    "http://localhost:4321",
+    "https://maplenet-api.com",
+    "https://maplenet.com.bo"
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Include routers
+app.include_router(auth.router)
+app.include_router(contacts.router)
+app.include_router(sales.router)
+app.include_router(pos.router)
+app.include_router(system.router)
