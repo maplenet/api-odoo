@@ -1,5 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from app.core.database import get_odoo_connection
+from app.config import settings
+import xmlrpc.client
 
 router = APIRouter(tags=["system"])
 
@@ -9,9 +11,13 @@ def read_root():
 
 @router.get("/version")
 def get_odoo_version():
-    conn = get_odoo_connection()
     try:
-        version = conn['models'].version()
+        # Crear conexión al cliente 'common' de Odoo
+        common = xmlrpc.client.ServerProxy(f"{settings.ODOO_URL}/xmlrpc/2/common")
+        
+        # Llamar al método 'version' para obtener información del sistema
+        version = common.version()
+        
         return {"version": version}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
