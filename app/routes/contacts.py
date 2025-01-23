@@ -4,9 +4,11 @@ from app.core.database import get_odoo_connection
 
 router = APIRouter(prefix="/contacts", tags=["contacts"])
 
+# Todo: Verificar de todos los endpoints las validaciones de los campos requeridos
+
 # Buscar contactos por nombre o datos específicos
 @router.post("/search")
-def search_contacts(search: dict, username: str = Depends(verify_token)):
+def search_contacts(search: dict, str = Depends(verify_token)):
     conn = get_odoo_connection()
     try:
         query = search.get("query")
@@ -40,9 +42,10 @@ def get_contact_ids(username: str = Depends(verify_token)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# TODO: Validar que no exista un contacto con el mismo email o móvil
 # Crear un nuevo contacto
 @router.post("/create")
-def create_contact(contact: dict, username: str = Depends(verify_token)):
+def create_contact(contact: dict, str = Depends(verify_token)):
     conn = get_odoo_connection()
     try:
         contact_id = conn['models'].execute_kw(
@@ -54,10 +57,11 @@ def create_contact(contact: dict, username: str = Depends(verify_token)):
         return {"contact_id": contact_id}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
+    
+# TODO: Validar que no exista un contacto con el mismo email o móvil
 # Crear un nuevo contacto básico
 @router.post("/create_basic")
-def create_contact_basic(contact: dict, username: str = Depends(verify_token)):
+def create_contact_basic(contact: dict, str = Depends(verify_token)):
     conn = get_odoo_connection()
     try:
         email = contact.get("email")
@@ -111,7 +115,7 @@ def get_contacts_paginated(
     offset: int = Query(0), 
     limit: int = Query(10), 
     query: str = Query(None),
-    username: str = Depends(verify_token)
+    str = Depends(verify_token)
 ):
     conn = get_odoo_connection()
     try:
@@ -135,7 +139,7 @@ def get_contacts_paginated_by_name(
     offset: int = Query(0), 
     limit: int = Query(10), 
     query: str = Query(None),
-    username: str = Depends(verify_token)
+    str = Depends(verify_token)
 ):
     conn = get_odoo_connection()
     try:
@@ -171,7 +175,7 @@ def get_contacts_details(username: str = Depends(verify_token)):
     
 # Obtener detalles de un contacto
 @router.get("/{contact_id}")
-def get_contact(contact_id: int, username: str = Depends(verify_token)):
+def get_contact(contact_id: int, str = Depends(verify_token)):
     conn = get_odoo_connection()
     try:
         result = conn['models'].execute_kw(
@@ -186,7 +190,7 @@ def get_contact(contact_id: int, username: str = Depends(verify_token)):
 
 # Actualizar un contacto
 @router.patch("/{contact_id}")
-def update_contact(contact_id: int, contact: dict, username: str = Depends(verify_token)):
+def update_contact(contact_id: int, contact: dict, str = Depends(verify_token)):
     conn = get_odoo_connection()
     try:
         result = conn['models'].execute_kw(
@@ -201,7 +205,7 @@ def update_contact(contact_id: int, contact: dict, username: str = Depends(verif
 
 # Eliminar un contacto
 @router.delete("/{contact_id}")
-def delete_contact(contact_id: int, username: str = Depends(verify_token)):
+def delete_contact(contact_id: int, str = Depends(verify_token)):
     conn = get_odoo_connection()
     try:
         result = conn['models'].execute_kw(

@@ -1,11 +1,11 @@
-from fastapi import APIRouter, HTTPException, Request, Depends
+from fastapi import APIRouter, HTTPException, Request, Depends, Response
 from app.core.security import create_access_token, verify_token, oauth2_scheme, blacklisted_tokens
 from app.core.database import get_odoo_connection
 
 router = APIRouter(tags=["authentication"])
 
 @router.post("/login")
-async def login(request: Request):
+async def login(request: Request, response: Response):
     body = await request.json()
     username = body.get("username")
     password = body.get("password")
@@ -26,6 +26,7 @@ async def login(request: Request):
         raise HTTPException(status_code=401, detail="Credenciales inválidas")
 
     access_token = create_access_token(username)
+    response.headers["Authorization"] = f"Bearer {access_token}"
     return {"access_token": access_token, "token_type": "bearer"}
 
 @router.post("/logout")
