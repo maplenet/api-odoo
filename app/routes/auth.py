@@ -30,7 +30,7 @@ async def login(request: Request, response: Response):
     access_token = create_access_token(username)
     
     # Configurar la cookie segura
-    response = JSONResponse(content={"user_id": matched_contact['id'], "message": "Inicio de sesión exitoso"})
+    response = JSONResponse(content={"user_id": matched_contact['id'], "access_token":access_token, "message": "Inicio de sesión exitoso"})
 
     response.set_cookie(
         key="access_token",

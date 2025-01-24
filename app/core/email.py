@@ -1,30 +1,37 @@
 from fastapi_mail import FastMail, MessageSchema, ConnectionConfig
-from pydantic import BaseModel, EmailStr
-from app.config import settings
+from pydantic_settings import BaseSettings
 
-class EmailSchema(BaseModel):
-    email: EmailStr
-    subject: str
-    body: str
+class EmailSettings(BaseSettings):
+    EMAIL_USERNAME: str
+    EMAIL_PASSWORD: str
+    EMAIL_FROM: str
+    EMAIL_PORT: int
+    EMAIL_SERVER: str
+    EMAIL_TLS: bool
+    EMAIL_SSL: bool
+
+    class Config:
+        env_file = ".env"
+
+email_settings = EmailSettings()
 
 conf = ConnectionConfig(
-    MAIL_USERNAME=settings.MAIL_USERNAME,
-    MAIL_PASSWORD=settings.MAIL_PASSWORD,
-    MAIL_FROM=settings.MAIL_FROM,
-    MAIL_PORT=settings.MAIL_PORT,
-    MAIL_SERVER=settings.MAIL_SERVER,
-    MAIL_TLS=settings.MAIL_TLS,
-    MAIL_SSL=settings.MAIL_SSL,
-    MAIL_FROM_NAME=settings.MAIL_FROM_NAME,
-    # TEMPLATE_FOLDER="/home/maplenet/Documentos/pruebas/app/templates"
+    MAIL_USERNAME=email_settings.EMAIL_USERNAME,
+    MAIL_PASSWORD=email_settings.EMAIL_PASSWORD,
+    MAIL_FROM=email_settings.EMAIL_FROM,
+    MAIL_PORT=email_settings.EMAIL_PORT,
+    MAIL_SERVER=email_settings.EMAIL_SERVER,
+    MAIL_TLS=email_settings.EMAIL_TLS,
+    MAIL_SSL=email_settings.EMAIL_SSL
 )
 
-async def send_email(email: EmailSchema):
+async def send_email(subject: str, recipients: list, body: str):
+    """Send an email using FastAPI-Mail."""
     message = MessageSchema(
-        subject=email.subject,
-        recipients=[email.email],
-        body=email.body,
-        subtype="html"
+        subject=subject,
+        recipients=recipients,  # List of email addresses
+        body=body,
+        subtype="html"  # Use "plain" for plain text emails
     )
     fm = FastMail(conf)
     await fm.send_message(message)
