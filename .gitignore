@@ -1,4 +1,4 @@
-/__pycache__/
+__pycache__/
 /routes/__pycache__/
 /images/
 /myvenv/
@@ -7,3 +7,4 @@
 /main copy2.py
 /model_external_api.py
 /models.py
+.gitignore
