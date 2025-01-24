@@ -4,6 +4,8 @@ from app.core.database import get_odoo_connection
 
 router = APIRouter(tags=["authentication"])
 
+from fastapi.responses import JSONResponse
+
 @router.post("/login")
 async def login(request: Request, response: Response):
     body = await request.json()
@@ -26,8 +28,24 @@ async def login(request: Request, response: Response):
         raise HTTPException(status_code=401, detail="Credenciales inválidas")
 
     access_token = create_access_token(username)
-    response.headers["Authorization"] = f"Bearer {access_token}"
-    return {"access_token": access_token, "token_type": "bearer"}
+    
+    # Configurar la cookie segura
+    response = JSONResponse(content={"message": "Inicio de sesión exitoso"})
+    response.set_cookie(
+        key="access_token",
+        value=access_token,
+        httponly=True,          # No accesible por JavaScript
+        secure=True,            # Solo en HTTPS
+        samesite="Strict",      # Previene CSRF
+        max_age=2592000         # 30 días en segundos
+    )
+    return response
+
+
+@router.post("/refresh")
+def refresh_token(username: str = Depends(verify_token)):
+    new_access_token = create_access_token(username)
+    return {"access_token": new_access_token, "token_type": "bearer"}
 
 @router.post("/logout")
 def logout(token: str = Depends(oauth2_scheme)):

@@ -190,7 +190,7 @@ def get_contact(contact_id: int, str = Depends(verify_token)):
 
 # Actualizar un contacto
 @router.patch("/{contact_id}")
-def update_contact(contact_id: int, contact: dict, str = Depends(verify_token)):
+def update_contact(contact_id: int, contact: dict, token:str = Depends(verify_token)):
     conn = get_odoo_connection()
     try:
         result = conn['models'].execute_kw(

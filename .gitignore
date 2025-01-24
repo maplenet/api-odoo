@@ -1,4 +1,5 @@
 /__pycache__/
+/routes/__pycache__/
 /images/
 /myvenv/
 /algo.py
