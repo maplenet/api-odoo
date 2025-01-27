@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Request, Depends, Response
 from app.core.email_validation import is_valid_email
 from app.core.security import create_access_token, verify_token, oauth2_scheme, blacklisted_tokens
 from app.core.database import get_odoo_connection
-from app.services.verification_service import handle_verification_request
+from app.services.verification_service import handle_verification_request, verify_code_and_email
 
 router = APIRouter(tags=["authentication"])
 
@@ -32,7 +32,7 @@ async def login(request: Request, response: Response):
     access_token = create_access_token(username)
     
     # Configurar la cookie segura
-    response = JSONResponse(content={"user_id": matched_contact['id'], "access_token":access_token, "message": "Inicio de sesión exitoso"})
+    response = JSONResponse(content={"user_id": matched_contact['id'], "access_token":access_token, "detail": "Inicio de sesión exitoso"})
 
     response.set_cookie(
         key="access_token",
@@ -52,11 +52,11 @@ def refresh_token(username: str = Depends(verify_token)):
 @router.post("/logout")
 def logout(token: str = Depends(oauth2_scheme)):
     blacklisted_tokens.add(token)
-    return {"message": "Sesión cerrada exitosamente"}
+    return {"detail": "Sesión cerrada exitosamente"}
 
 @router.get("/protected")
 def protected_route(username: str = Depends(verify_token)):
-    return {"message": f"Bienvenido {username}, esta es una ruta protegida."}
+    return {"detail": f"Bienvenido {username}, esta es una ruta protegida."}
 
 from fastapi import APIRouter, HTTPException, Request
 
@@ -91,3 +91,19 @@ async def verify_email(request: Request):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
 
+@router.post("/verify-code")
+async def verify_code(request: Request):
+    body = await request.json()
+    email = body.get("email")
+    code = body.get("code")
+
+    # Verificar si ambos campos están presentes
+    if not email or not code:
+        raise HTTPException(status_code=400, detail="Los campos 'email' y 'code' son obligatorios.")
+
+    # Lógica de verificación
+    result = verify_code_and_email(email, code)
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+
+    return result

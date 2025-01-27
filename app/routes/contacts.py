@@ -95,7 +95,7 @@ def create_contact(contact: dict, str = Depends(verify_token)):
 #     except Exception as e:
 #         raise HTTPException(status_code=500, detail=str(e))
 
-# Todo: COnvertir todas las funciones en Funciones asincronas
+# Todo: Convertir todas las funciones en Funciones asincronas
 @router.post("/create_basic")
 def create_contact_basic(contact: dict, str = Depends(verify_token)):
     conn = get_odoo_connection()
@@ -139,7 +139,7 @@ def create_contact_basic(contact: dict, str = Depends(verify_token)):
 
         return {
             "contact_id": contact_id,
-            "message": f"Contacto creado exitosamente y correo enviado a {email}"
+            "detail": f"Contacto creado exitosamente y correo enviado a {email}"
         }
     except Exception as e:
         import traceback
@@ -152,7 +152,7 @@ def create_contact_basic(contact: dict, str = Depends(verify_token)):
 def send_notification_email(email: str, subject: str, body: str, str = Depends(verify_token)):
     try:
         send_email(to_email=email, subject=subject, body=body)
-        return {"message": "Correo enviado exitosamente"}
+        return {"detail": "Correo enviado exitosamente"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

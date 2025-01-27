@@ -44,8 +44,44 @@ def handle_verification_request(email: str):
             return {"error": "El correo ya está habilitado."}
         else:  # Si el estado es False, generar un nuevo código
             create_verification_code(email)
-            return {"message": "Nuevo código enviado al correo."}
+            return {"detail": "Nuevo código enviado al correo."}
     else:
         # Si no existe ningún registro previo, crear uno nuevo
         create_verification_code(email)
-        return {"message": "Código enviado al correo."}
+        return {"detail": "Código enviado al correo."}
+
+def verify_code_and_email(email: str, code: str):
+    """Verify the code and email against the database."""
+    with get_sqlite_connection() as conn:
+        conn.row_factory = sqlite3.Row  # Usar sqlite3.Row para obtener un diccionario
+        cursor = conn.cursor()
+
+        # Verificar si el correo existe en la tabla
+        cursor.execute("""
+        SELECT * FROM verification_codes
+        WHERE email = ?
+        ORDER BY created_at DESC
+        LIMIT 1
+        """, (email,))
+        latest_record = cursor.fetchone()
+
+        if not latest_record:
+            return {"error": "No se encontró un registro para el correo proporcionado."}
+
+        # Validar el código y el estado
+
+        if latest_record["status"] == 1:
+            return {"error": "El correo ya ha sido verificado previamente."}
+
+        if latest_record["code"] != code:
+            return {"error": "El código proporcionado no coincide."}
+        
+        # Actualizar el estado a true (1)
+        cursor.execute("""
+        UPDATE verification_codes
+        SET status = 1
+        WHERE email = ? AND code = ?
+        """, (email, code))
+        conn.commit()
+
+        return {"detail": "El correo ha sido verificado exitosamente."}

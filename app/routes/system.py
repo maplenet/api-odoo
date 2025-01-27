@@ -7,7 +7,7 @@ router = APIRouter(tags=["system"])
 
 @router.get("/")
 def read_root():
-    return {"message": "Bienvenido a la API de integración con Odoo"}
+    return {"detail": "Bienvenido a la API de integración con Odoo"}
 
 @router.get("/version")
 def get_odoo_version():
