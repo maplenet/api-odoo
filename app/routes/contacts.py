@@ -130,8 +130,8 @@ def create_contact_basic(contact: dict, str = Depends(verify_token)):
         <html>
         <body>
             <h1>Hola {contact.get('name', 'Usuario')}!</h1>
-            <p>Tu contacto ha sido registrado exitosamente en nuestro sistema, OH YEAHaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.</p>
-            <p>Si tienes alguna pregunta, no dudes en contactarnos.</p>
+            <p>Tu contacto ha sido registrado exitosamente en nuestro sistema, ESta es una prueba para ver si ya se cumplio con lo pedido..</p>
+            <p>Si tienes alguna pregunta, no dudes en contactarnos. -------------------------------------</p>
         </body>
         </html>
         """
@@ -146,6 +146,15 @@ def create_contact_basic(contact: dict, str = Depends(verify_token)):
         error_trace = traceback.format_exc()
         raise HTTPException(status_code=500, detail=f"Error interno: {error_trace}")
 
+
+# Crear endpoint para enviar correo de notificación de cualquier evento
+@router.post("/send_email")
+def send_notification_email(email: str, subject: str, body: str, str = Depends(verify_token)):
+    try:
+        send_email(to_email=email, subject=subject, body=body)
+        return {"message": "Correo enviado exitosamente"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 # Obtener todos los contactos
 @router.get("/")

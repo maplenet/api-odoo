@@ -21,17 +21,7 @@ def verify_token(token: str = Depends(oauth2_scheme)):
         payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
         username: str = payload.get("sub")
         if username is None:
-            raise HTTPException(status_code=401, detail="Token inválido")
-        
-        # # Verificar que la sesión con Odoo siga activa
-        # conn = get_odoo_connection()
-        # is_active = conn['models'].execute_kw(
-        #     conn['db'], conn['uid'], conn['password'],
-        #     'res.users', 'search_count', [[['login', '=', username]]]
-        # )
-        # if not is_active:
-        #     raise HTTPException(status_code=401, detail="La sesión de Odoo ha caducado")
-        
+            raise HTTPException(status_code=401, detail="Token inválido")        
         return username
     except JWTError:
         raise HTTPException(status_code=401, detail="Token inválido o expirado")

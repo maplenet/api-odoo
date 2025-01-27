@@ -7,3 +7,6 @@ main copy.py
 main copy2.py
 model_external_api.py
 models.py
+query_db.py
+verification_codes.db
+.vscode/

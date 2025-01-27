@@ -1,0 +1,86 @@
+.
+├── app
+│   ├── config.py
+│   ├── core
+│   │   ├── database.py
+│   │   ├── email.py
+│   │   ├── email_utils.py
+│   │   ├── email_validation.py
+│   │   ├── __init__.py
+│   │   ├── __pycache__
+│   │   └── security.py
+│   ├── __init__.py
+│   ├── main.py
+│   ├── models
+│   │   ├── __init__.py
+│   │   ├── sale.py
+│   │   └── user.py
+│   ├── __pycache__
+│   │   ├── config.cpython-311.pyc
+│   │   ├── __init__.cpython-311.pyc
+│   │   └── main.cpython-311.pyc
+│   ├── routes
+│   │   ├── auth.py
+│   │   ├── contacts.py
+│   │   ├── __init__.py
+│   │   ├── pos.py
+│   │   ├── __pycache__
+│   │   ├── sales.py
+│   │   └── system.py
+│   └── services
+│       ├── auth_service.py
+│       ├── __init__.py
+│       ├── odoo_service.py
+│       ├── __pycache__
+│       └── verification_service.py
+├── conversorBase64.py
+├── create_contacts.py
+├── estructura.txt
+├── images
+│   ├── foto1.jpg
+│   ├── foto2.jpeg
+│   └── foto3.jpeg
+├── INSTALL.md
+├── main copy2.py
+├── main copy.py
+├── models.py
+├── myvenv
+│   ├── bin
+│   │   ├── activate
+│   │   ├── activate.csh
+│   │   ├── activate.fish
+│   │   ├── Activate.ps1
+│   │   ├── dotenv
+│   │   ├── email_validator
+│   │   ├── fastapi
+│   │   ├── normalizer
+│   │   ├── pip
+│   │   ├── pip3
+│   │   ├── pip3.11
+│   │   ├── pyrsa-decrypt
+│   │   ├── pyrsa-encrypt
+│   │   ├── pyrsa-keygen
+│   │   ├── pyrsa-priv2pub
+│   │   ├── pyrsa-sign
+│   │   ├── pyrsa-verify
+│   │   ├── python -> python3
+│   │   ├── python3 -> /usr/bin/python3
+│   │   ├── python3.11 -> python3
+│   │   └── uvicorn
+│   ├── include
+│   │   └── python3.11
+│   ├── lib
+│   │   └── python3.11
+│   ├── lib64 -> lib
+│   └── pyvenv.cfg
+├── __pycache__
+│   ├── config.cpython-311.pyc
+│   ├── main.cpython-311.pyc
+│   ├── models.cpython-311.pyc
+│   └── utils.cpython-311.pyc
+├── README.md
+├── requirements.txt
+├── test_email.py
+└── verification.db
+
+19 directories, 65 files

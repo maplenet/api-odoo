@@ -1,0 +1,51 @@
+import sqlite3
+import random
+from app.core.database import get_sqlite_connection
+from app.core.email_utils import send_email
+
+def generate_verification_code():
+    return f"{random.randint(100000, 999999)}"
+
+def get_latest_verification_code(email: str):
+    with get_sqlite_connection() as conn:
+        conn.row_factory = sqlite3.Row  # Hacer que SQLite devuelva los resultados como diccionarios
+        cursor = conn.cursor()
+        cursor.execute("""
+        SELECT * FROM verification_codes
+        WHERE email = ?
+        ORDER BY created_at DESC
+        LIMIT 1
+        """, (email,))
+        return cursor.fetchone()  # Devuelve None si no hay resultados
+
+def create_verification_code(email: str):
+    code = generate_verification_code()
+    with get_sqlite_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+        INSERT INTO verification_codes (email, code, status)
+        VALUES (?, ?, 0)
+        """, (email, code))
+        conn.commit()
+
+    # Enviar el código por correo electrónico
+    send_email(
+        to_email=email,
+        subject="Código de verificación",
+        body=f"Tu código de verificación es: {code}"
+    )
+    return code
+
+def handle_verification_request(email: str):
+    latest_record = get_latest_verification_code(email)
+
+    if latest_record:
+        if latest_record["status"]:  # Si ya está activado
+            return {"error": "El correo ya está habilitado."}
+        else:  # Si el estado es False, generar un nuevo código
+            create_verification_code(email)
+            return {"message": "Nuevo código enviado al correo."}
+    else:
+        # Si no existe ningún registro previo, crear uno nuevo
+        create_verification_code(email)
+        return {"message": "Código enviado al correo."}
