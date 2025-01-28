@@ -1,5 +1,7 @@
+aiosmtplib==3.0.2
 annotated-types==0.7.0
 anyio==4.8.0
+blinker==1.9.0
 certifi==2024.12.14
 charset-normalizer==3.4.1
 click==8.1.8
@@ -7,8 +9,11 @@ dnspython==2.7.0
 ecdsa==0.19.0
 email_validator==2.2.0
 fastapi==0.115.6
+fastapi-mail==1.4.2
 h11==0.14.0
 idna==3.10
+Jinja2==3.1.5
+MarkupSafe==3.0.2
 pillow==11.1.0
 pyasn1==0.6.1
 pydantic==2.10.5
