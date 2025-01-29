@@ -12,6 +12,7 @@ def get_odoo_connection():
     models = xmlrpc.client.ServerProxy(f"{settings.ODOO_URL}/xmlrpc/2/object")
     
     return {
+        "common": common,  
         'db': settings.ODOO_DB,
         'uid': uid,
         'password': settings.ODOO_PASSWORD,

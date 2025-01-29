@@ -1,5 +1,7 @@
 import sqlite3
 import random
+
+from fastapi import HTTPException
 from app.core.database import get_sqlite_connection
 from app.core.email_utils import send_email
 
@@ -51,7 +53,7 @@ def handle_verification_request(email: str):
         return {"detail": "Código enviado al correo."}
 
 def verify_code_and_email(email: str, code: str):
-    """Verify the code and email against the database."""
+
     with get_sqlite_connection() as conn:
         conn.row_factory = sqlite3.Row  # Usar sqlite3.Row para obtener un diccionario
         cursor = conn.cursor()
@@ -71,7 +73,7 @@ def verify_code_and_email(email: str, code: str):
         # Validar el código y el estado
 
         if latest_record["status"] == 1:
-            return {"error": "El correo ya ha sido verificado previamente."}
+            raise HTTPException(status_code=409, detail="El correo ya ha sido verificado previamente.")
 
         if latest_record["code"] != code:
             return {"error": "El código proporcionado no coincide."}

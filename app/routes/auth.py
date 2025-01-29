@@ -11,43 +11,91 @@ from fastapi.responses import JSONResponse
 @router.post("/login")
 async def login(request: Request, response: Response):
     body = await request.json()
-    username = body.get("username")
+    email = body.get("email")
     password = body.get("password")
 
-    if not username or not password:
-        raise HTTPException(status_code=400, detail="Se requieren 'username' y 'password'")
+    if not email or not password:
+        raise HTTPException(status_code=400, detail="Se requieren 'email' y 'password'.")
 
-    conn = get_odoo_connection()
-    contacts = conn['models'].execute_kw(
-        conn['db'], conn['uid'], conn['password'],
-        'res.partner', 'search_read', [[]]
-    )
+    if not is_valid_email(email):
+        raise HTTPException(status_code=400, detail="Correo inválido.")
 
-    matched_contact = next((contact for contact in contacts 
-                             if contact['email'] == username and contact['mobile'] == password), None)
+    # Conectar con Odoo
+    try:
+        conn = get_odoo_connection()
+
+        if "common" not in conn or "models" not in conn:
+            raise HTTPException(status_code=500, detail="Error en la conexión con Odoo.")
+
+        # **Autenticar usuario con Odoo**
+        user_id = conn["common"].authenticate(conn["db"], email, password, {})
+
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Credenciales inválidas.")  # <-- Aquí lanzamos el error 401 correctamente
+
+        # **Obtener información del usuario desde res.users**
+        users = conn["models"].execute_kw(
+            conn["db"], conn["uid"], conn["password"],
+            "res.users", "search_read", [[["id", "=", user_id]]], 
+            {"fields": ["id", "name", "login", "email"]}
+        )
+
+        if not users:
+            raise HTTPException(status_code=404, detail="No se encontró el usuario.")
+
+        user = users[0]  # Usuario autenticado
+
+        # **Generar token**
+        access_token = create_access_token(email)
+
+        # **Configurar respuesta con cookie**
+        response = JSONResponse(
+            content={
+                "user_id": user["id"], 
+                # "email": user["email"], 
+                # "access_token": access_token, 
+                "detail": "Proceso exitoso."
+            }
+        )
+        response.set_cookie(
+            key="access_token",
+            value=access_token,
+            httponly=True,
+            secure=True,  
+            samesite="Lax"
+        )
+
+        return response
+
+    except HTTPException as http_err:
+        raise http_err  
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error interno del servidor: {str(e)}")
+
+
+
+
+# Refrescar el token de acceso
+@router.post("/refresh-token")
+def refresh_token(response: Response, token: str = Depends(oauth2_scheme)):
+    if not token:
+        raise HTTPException(status_code=400, detail="Token de acceso no proporcionado.")
     
-    if not matched_contact:
-        raise HTTPException(status_code=401, detail="Credenciales inválidas")
+    if token in blacklisted_tokens:
+        raise HTTPException(status_code=401, detail="Token inválido.")
 
-    access_token = create_access_token(username)
-    
-    # Configurar la cookie segura
-    response = JSONResponse(content={"user_id": matched_contact['id'], "access_token":access_token, "detail": "Inicio de sesión exitoso"})
-
+    access_token = create_access_token(token)
     response.set_cookie(
         key="access_token",
         value=access_token,
-        httponly=False,          # No accesible por JavaScript
-        secure=False,            # Solo en HTTPS
-        samesite="Lax",      # Previene CSRF
+        httponly=True,
+        secure=True,
+        samesite="Lax"
     )
-    return response
 
+    return {"detail": "Token de acceso actualizado."}
 
-@router.post("/refresh")
-def refresh_token(username: str = Depends(verify_token)):
-    new_access_token = create_access_token(username)
-    return {"access_token": new_access_token, "token_type": "bearer"}
 
 @router.post("/logout")
 def logout(token: str = Depends(oauth2_scheme)):
@@ -57,8 +105,6 @@ def logout(token: str = Depends(oauth2_scheme)):
 @router.get("/protected")
 def protected_route(username: str = Depends(verify_token)):
     return {"detail": f"Bienvenido {username}, esta es una ruta protegida."}
-
-from fastapi import APIRouter, HTTPException, Request
 
 @router.post("/verify-email")
 async def verify_email(request: Request):
