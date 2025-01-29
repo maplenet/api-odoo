@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Query, Depends, Request
 from app.core.security import verify_token
 from app.core.database import get_odoo_connection, get_sqlite_connection
 from app.core.email_utils import send_email
+from datetime import datetime, timedelta, timezone
 
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -196,7 +197,7 @@ async def update_password(request: Request):
         raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
 
 @router.get("/{user_id}")
-async def get_user_with_orders(user_id: int, token=Depends(verify_token)):
+async def get_user_with_service(user_id: int, token=Depends(verify_token)):
     conn = get_odoo_connection()
     try:
         # Obtener información del usuario
@@ -215,60 +216,96 @@ async def get_user_with_orders(user_id: int, token=Depends(verify_token)):
         if not partner_id:
             raise HTTPException(status_code=404, detail="El usuario no tiene un contacto asociado.")
 
-        # Obtener información del contacto (partner)
-        partner_data = conn['models'].execute_kw(
-            conn['db'], conn['uid'], conn['password'],
-            'res.partner', 'read', [[partner_id]],
-            {'fields': ['name', 'email', 'phone', 'mobile', 'street', 'city', 'country_id']}
-        )
+        today = datetime.now(timezone.utc)  # Convertimos a UTC
 
-        if not partner_data:
-            raise HTTPException(status_code=404, detail="No se encontró información del contacto.")
+        def get_latest_order(model_name, partner_field):
+            """ Obtiene el pedido más reciente de PdV o Ventas """
+            orders = conn['models'].execute_kw(
+                conn['db'], conn['uid'], conn['password'],
+                model_name, 'search_read',
+                [[[partner_field, '=', partner_id]]],
+                {'fields': ['id', 'name', 'date_order', 'state', 'lines'] if model_name == 'pos.order' else ['id', 'name', 'date_order', 'state', 'order_line'],
+                'order': 'date_order desc',
+                'limit': 1}
+            )
+            return orders[0] if orders else None
 
-        partner = partner_data[0]
+        # Obtener la última orden de PdV
+        pdv_order = get_latest_order('pos.order', 'partner_id')
 
-        # Obtener todas las órdenes de PdV asociadas a este contacto
-        pos_orders = conn['models'].execute_kw(
-            conn['db'], conn['uid'], conn['password'],
-            'pos.order', 'search_read',
-            [[['partner_id', '=', partner_id]]],
-            {'fields': ['name', 'date_order', 'amount_total', 'state', 'lines']}
-        )
+        # Obtener la última orden de Ventas
+        sales_order = get_latest_order('sale.order', 'partner_id')
 
-        # Obtener detalles de las líneas de cada orden
-        for order in pos_orders:
+        def format_service(order, origin):
+            """ Formatea el objeto `service` a partir de una orden """
+            date_order = datetime.strptime(order["date_order"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+            date_expiration = date_order + timedelta(days=30)
+            status = date_order <= today <= date_expiration
+
+            # Obtener detalles de la línea de orden (pos.order.line o sale.order.line)
+            order_line_model = 'pos.order.line' if origin == 'pdv' else 'sale.order.line'
             order_lines = conn['models'].execute_kw(
                 conn['db'], conn['uid'], conn['password'],
-                'pos.order.line', 'search_read',
+                order_line_model, 'search_read',
                 [[['order_id', '=', order['id']]]],
-                {'fields': ['product_id', 'qty', 'price_unit', 'discount', 'price_subtotal']}
+                {'fields': ['id', 'product_id', 'price_subtotal']}
             )
 
-            # Obtener detalles de los productos en las líneas
-            for line in order_lines:
-                product_id = line.get('product_id', [None])[0]
-                if product_id:
-                    product_data = conn['models'].execute_kw(
-                        conn['db'], conn['uid'], conn['password'],
-                        'product.product', 'read', [[product_id]],
-                        {'fields': ['name', 'default_code', 'list_price']}
-                    )
-                    if product_data:
-                        line['product_details'] = product_data[0]
+            if not order_lines:
+                return None
 
-            order['order_lines'] = order_lines
+            line = order_lines[0]
+            product_id = line.get("product_id", [None])[0]
 
-        # Respuesta consolidada
+            # Obtener detalles del producto
+            product_data = conn['models'].execute_kw(
+                conn['db'], conn['uid'], conn['password'],
+                'product.product', 'read', [[product_id]],
+                {'fields': ['name']}
+            ) if product_id else None
+
+            return {
+                "origin": origin,
+                "date_order": order["date_order"],
+                "date_expiration": date_expiration.strftime("%Y-%m-%d %H:%M:%S"),
+                "status": status,
+                "id": order["id"],
+                "id_service": product_id,
+                "name": product_data[0]["name"] if product_data else "Desconocido",
+                "price_paid": line["price_subtotal"]
+            }
+
+        # Comparar fechas y seleccionar el más reciente
+        selected_service = None
+        if pdv_order and sales_order:
+            pdv_date = datetime.strptime(pdv_order["date_order"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+            sales_date = datetime.strptime(sales_order["date_order"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+            selected_service = format_service(pdv_order, "pdv") if pdv_date >= sales_date else format_service(sales_order, "sales")
+        elif pdv_order:
+            selected_service = format_service(pdv_order, "pdv")
+        elif sales_order:
+            selected_service = format_service(sales_order, "sales")
+
         return {
-            "user": user,
-            "partner": partner,
-            "pos_orders": pos_orders
+            "user": {
+                "id": user["id"],
+                "email": user["email"],
+                "name": user["name"],
+                "password": user["password"],
+                "mobile": user["mobile"],
+                "street": user["street"]
+            },
+            "service": selected_service if selected_service else {}
         }
-
+    except HTTPException as http_error:
+        raise http_error
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error interno: {e}")
 
-
+#   except HTTPException as http_error:
+#         raise http_error
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
 
 # Obtener todos los detalles de un usuario por su id
 @router.get("/all/{user_id}")
