@@ -293,7 +293,7 @@ async def get_user_with_service(user_id: int, token=Depends(verify_token)):
                 "name": user["name"],
                 "password": user["password"],
                 "mobile": user["mobile"],
-                "street": user["street"]
+                "street": user["street"] or ""
             },
             "service": selected_service if selected_service else {}
         }
