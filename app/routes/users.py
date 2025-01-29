@@ -318,5 +318,3 @@ async def get_user_all(user_id: int, token=Depends(verify_token)):
         # Manejo de errores genérico
         raise HTTPException(status_code=500, detail=f"Error interno: {e}")
 
-
-# 
