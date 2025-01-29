@@ -46,7 +46,7 @@ async def login(request: Request, response: Response):
         user = users[0]  # Usuario autenticado
 
         # **Generar token**
-        access_token = create_access_token(email)
+        access_token = create_access_token(user["id"], email)
 
         # **Configurar respuesta con cookie**
         response = JSONResponse(

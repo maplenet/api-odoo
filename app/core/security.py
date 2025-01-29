@@ -8,8 +8,8 @@ from app.core.database import get_odoo_connection
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 blacklisted_tokens = set()
 
-def create_access_token(username: str, expires_delta: timedelta = None):
-    to_encode = {"sub": username, "iat": datetime.now(timezone.utc)}
+def create_access_token(user_id: int, email: str, expires_delta: timedelta = None):
+    to_encode = {"sub": email, "user_id": user_id, "iat": datetime.now(timezone.utc)}
     expire = datetime.now(timezone.utc) + (expires_delta or timedelta(minutes=settings.JWT_EXPIRATION_MINUTES))
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
