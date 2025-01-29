@@ -9,7 +9,7 @@ router = APIRouter(prefix="/users", tags=["users"])
 
 
 @router.post("/create")
-async def create_user(request: Request, token=Depends(verify_token)):
+async def create_user(request: Request):
     try:
         # Obtener los datos del cuerpo de la solicitud
         body = await request.json()
