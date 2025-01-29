@@ -60,8 +60,8 @@ async def login(request: Request, response: Response):
         response.set_cookie(
             key="access_token",
             value=access_token,
-            httponly=True,
-            secure=True,  
+            httponly=False,
+            secure=False,  
             samesite="Lax"
         )
 
@@ -97,9 +97,16 @@ def refresh_token(response: Response, token: str = Depends(oauth2_scheme)):
     return {"detail": "Token de acceso actualizado."}
 
 
+# @router.post("/logout")
+# def logout(token: str = Depends(oauth2_scheme)):
+#     blacklisted_tokens.add(token)
+#     return {"detail": "Sesión cerrada exitosamente"}
+
+# Cierra sesión y elimina la cookie y el token de la lista negra por medio de un identificador
 @router.post("/logout")
-def logout(token: str = Depends(oauth2_scheme)):
+def logout(response: Response, token: str = Depends(oauth2_scheme)):
     blacklisted_tokens.add(token)
+    response.delete_cookie(key="access_token")
     return {"detail": "Sesión cerrada exitosamente"}
 
 @router.get("/protected")

@@ -302,11 +302,6 @@ async def get_user_with_service(user_id: int, token=Depends(verify_token)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error interno: {e}")
 
-#   except HTTPException as http_error:
-#         raise http_error
-#     except Exception as e:
-#         raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
-
 # Obtener todos los detalles de un usuario por su id
 @router.get("/all/{user_id}")
 async def get_user_all(user_id: int, token=Depends(verify_token)):
@@ -323,3 +318,5 @@ async def get_user_all(user_id: int, token=Depends(verify_token)):
         # Manejo de errores genérico
         raise HTTPException(status_code=500, detail=f"Error interno: {e}")
 
+
+# 
