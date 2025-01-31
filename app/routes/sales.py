@@ -1,6 +1,8 @@
 from fastapi import APIRouter, HTTPException, Depends
 from app.core.security import verify_token
 from app.core.database import get_odoo_connection
+from app.services.sale_service import confirm_quotation, create_invoice, confirm_invoice, send_invoice_by_email
+
 
 router = APIRouter(prefix="/sales", tags=["sales"])
 
@@ -188,3 +190,27 @@ async def delete_sale(sale_id: int, token: str = Depends(verify_token)):
         raise http_error
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al eliminar la venta: {str(e)}")
+
+# Confirmar una cotización    
+@router.post("/confirm_quotation/{quotation_id}")
+async def confirm_quotation_endpoint(quotation_id: int, token: str = Depends(verify_token)):
+    try:
+        # Paso 1: Confirmar la cotización
+        confirm_quotation(quotation_id)
+
+        # Paso 2: Crear la factura
+        invoice_id = create_invoice(quotation_id)
+
+        # Paso 3: Enviar la factura por correo
+        send_invoice_by_email(invoice_id)
+
+        return {
+            "success": True,
+            "detail": f"La cotización con ID {quotation_id} ha sido confirmada, facturada y enviada por correo.",
+            "invoice_id": invoice_id
+        }
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error en el proceso: {str(e)}")
