@@ -15,12 +15,10 @@ async def create_user(request: Request):
         body = await request.json()
         name = body.get("name")
         email = body.get("email")
-        password = body.get("password")
-        verify_password = body.get("verify_password")
         mobile = body.get("mobile")
 
         # Validar que todos los campos requeridos estén presentes
-        if not all([name, email, password, verify_password, mobile]):
+        if not all([name, email, mobile]):
             raise HTTPException(status_code=400, detail="Todos los campos son obligatorios.")
 
         # Verificar el correo en la tabla de verification_codes
@@ -37,9 +35,6 @@ async def create_user(request: Request):
         if status == 0:
             raise HTTPException(status_code=400, detail="El correo no ha sido verificado.")
 
-        # Verificar que las contraseñas coincidan
-        if password != verify_password:
-            raise HTTPException(status_code=400, detail="Las contraseñas no coinciden.")
 
         # Obtener la conexión a Odoo
         odoo_conn = get_odoo_connection()
@@ -70,7 +65,6 @@ async def create_user(request: Request):
                 'login': email,
                 'name': name,
                 'email': email,
-                'password': password,
                 'mobile': mobile,
                 'lang': 'es_MX',  # Establecer el idioma a español de México
                 'groups_id': [(6, 0, [group_portal_id])]  # Asignar grupo Portal
@@ -218,73 +212,70 @@ async def get_user_with_service(user_id: int, token=Depends(verify_token)):
 
         today = datetime.now(timezone.utc)  # Convertimos a UTC
 
-        def get_latest_order(model_name, partner_field):
-            """ Obtiene el pedido más reciente de PdV o Ventas """
-            orders = conn['models'].execute_kw(
-                conn['db'], conn['uid'], conn['password'],
-                model_name, 'search_read',
-                [[[partner_field, '=', partner_id]]],
-                {'fields': ['id', 'name', 'date_order', 'state', 'lines'] if model_name == 'pos.order' else ['id', 'name', 'date_order', 'state', 'order_line'],
-                'order': 'date_order desc',
-                'limit': 1}
-            )
-            return orders[0] if orders else None
+        # Obtener la última factura válida
+        invoice = conn['models'].execute_kw(
+            conn['db'], conn['uid'], conn['password'],
+            'account.move', 'search_read',
+            [[
+                ['partner_id', '=', partner_id],
+                ['payment_state', '=', 'paid'],
+                ['vr_estado', '=', 'send_and_confirm']
+            ]],
+            {
+                'fields': ['id', 'invoice_date', 'amount_total', 'invoice_line_ids'],
+                'order': 'invoice_date desc',
+                'limit': 1
+            }
+        )
 
-        # Obtener la última orden de PdV
-        pdv_order = get_latest_order('pos.order', 'partner_id')
-
-        # Obtener la última orden de Ventas
-        sales_order = get_latest_order('sale.order', 'partner_id')
-
-        def format_service(order, origin):
-            """ Formatea el objeto `service` a partir de una orden """
-            date_order = datetime.strptime(order["date_order"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
-            date_expiration = date_order + timedelta(days=30)
-            status = date_order <= today <= date_expiration
-
-            # Obtener detalles de la línea de orden (pos.order.line o sale.order.line)
-            order_line_model = 'pos.order.line' if origin == 'pdv' else 'sale.order.line'
-            order_lines = conn['models'].execute_kw(
-                conn['db'], conn['uid'], conn['password'],
-                order_line_model, 'search_read',
-                [[['order_id', '=', order['id']]]],
-                {'fields': ['id', 'product_id', 'price_subtotal']}
-            )
-
-            if not order_lines:
-                return None
-
-            line = order_lines[0]
-            product_id = line.get("product_id", [None])[0]
-
-            # Obtener detalles del producto
-            product_data = conn['models'].execute_kw(
-                conn['db'], conn['uid'], conn['password'],
-                'product.product', 'read', [[product_id]],
-                {'fields': ['name']}
-            ) if product_id else None
-
+        if not invoice:
             return {
-                "origin": origin,
-                "date_order": order["date_order"],
-                "date_expiration": date_expiration.strftime("%Y-%m-%d %H:%M:%S"),
-                "status": status,
-                "id": order["id"],
-                "id_service": product_id,
-                "name": product_data[0]["name"] if product_data else "Desconocido",
-                "price_paid": line["price_subtotal"]
+                "user": {
+                    "id": user["id"],
+                    "email": user["email"],
+                    "name": user["name"],
+                    "password": user["password"],
+                    "mobile": user["mobile"],
+                    "street": user["street"] or ""
+                },
+                "service": {}
             }
 
-        # Comparar fechas y seleccionar el más reciente
-        selected_service = None
-        if pdv_order and sales_order:
-            pdv_date = datetime.strptime(pdv_order["date_order"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
-            sales_date = datetime.strptime(sales_order["date_order"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
-            selected_service = format_service(pdv_order, "pdv") if pdv_date >= sales_date else format_service(sales_order, "sales")
-        elif pdv_order:
-            selected_service = format_service(pdv_order, "pdv")
-        elif sales_order:
-            selected_service = format_service(sales_order, "sales")
+        invoice = invoice[0]
+
+        # Obtener el producto asociado a la factura
+        invoice_line = conn['models'].execute_kw(
+            conn['db'], conn['uid'], conn['password'],
+            'account.move.line', 'read', [invoice['invoice_line_ids']],
+            {'fields': ['product_id']}
+        )
+
+        product_id = invoice_line[0]['product_id'][0] if invoice_line and invoice_line[0]['product_id'] else None
+
+        # Obtener detalles del producto
+        product_data = conn['models'].execute_kw(
+            conn['db'], conn['uid'], conn['password'],
+            'product.product', 'read', [[product_id]],
+            {'fields': ['name']}
+        ) if product_id else None
+
+        # Calcular la fecha de expiración
+        invoice_date = datetime.strptime(invoice['invoice_date'], "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        date_expiration = invoice_date + timedelta(days=30)
+
+        # Calcular el estado del servicio
+        status = invoice_date <= today <= date_expiration
+
+        # Construir el objeto service
+        service = {
+            "id": invoice["id"],
+            "id_service": product_id,
+            "name": product_data[0]["name"] if product_data else "Desconocido",
+            "price_paid": invoice["amount_total"],
+            "date_order": invoice["invoice_date"],
+            "date_expiration": date_expiration.strftime("%Y-%m-%d %H:%M:%S"),
+            "status": status
+        }
 
         return {
             "user": {
@@ -295,7 +286,7 @@ async def get_user_with_service(user_id: int, token=Depends(verify_token)):
                 "mobile": user["mobile"],
                 "street": user["street"] or ""
             },
-            "service": selected_service if selected_service else {}
+            "service": service
         }
     except HTTPException as http_error:
         raise http_error

@@ -11,13 +11,35 @@ router = APIRouter(prefix="/invoices", tags=["invoices"])
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Obtener todos los datos de un factura
+@router.get("/get_invoice/{invoice_id}")
+async def get_invoice(invoice_id: int, token: str = Depends(verify_token)):
+    """
+    Obtiene todos los datos de una factura en Odoo.
+    """
+    conn = get_odoo_connection()
+    try:
+        # Obtener los datos de la factura
+        invoice_data = conn['models'].execute_kw(
+            conn['db'], conn['uid'], conn['password'],
+            'account.move', 'read', [invoice_id]
+        )
+
+        if not invoice_data:
+            raise HTTPException(status_code=404, detail="No se encontró la factura solicitada.")
+
+        return {
+            "success": True,
+            "invoice_data": invoice_data
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al obtener la factura: {str(e)}")
+    
 # Crear una factura en estado de borrador
 @router.post("/create_draft_invoice")
 async def create_draft_invoice(request: Request, token: str = Depends(verify_token)):
-    """
-    Crea una factura en estado de borrador (sin confirmar) usando el precio de venta del producto.
-    Realiza validaciones y verificaciones para garantizar la integridad de los datos.
-    """
+
     data = await request.json()  # Obtener JSON del request
 
     # Validar que los campos requeridos estén presentes
@@ -83,13 +105,49 @@ async def create_draft_invoice(request: Request, token: str = Depends(verify_tok
             )
         logger.info(f"Precio de venta del producto obtenido: {list_price}")
 
-        # Paso 3: Crear la factura en estado de borrador con el precio del producto
-        logger.info("Creando la factura en estado de borrador...")
+
+        # Obtener la información pertinente del contacto para la factura
+        partner_data = conn['models'].execute_kw(
+            conn['db'], conn['uid'], conn['password'],
+            'res.partner', 'read', [partner_id], {'fields': [
+                'name',                                 # Nombre
+                'vat',                                  # NIT
+                'l10n_bo_extension',                    # Extensión de carnet
+                'l10n_latam_identification_type_id',    # Tipo de identificación
+                'l10n_bo_business_name',                # Razón social
+                ]}
+        )
+
+        logger.info(f"Datos del contacto obtenidos: {partner_data}")
+
+        if not partner_data:
+            raise HTTPException(status_code=404, detail="No se encontró el contacto.")
+        
+        if not all([
+            partner_data[0].get('name'), 
+            partner_data[0].get('vat'), 
+            partner_data[0].get('l10n_latam_identification_type_id'),
+            partner_data[0].get('l10n_bo_business_name')
+            ]):
+            raise HTTPException(status_code=400, detail="Datos incompletos del contacto.")
+        
+        # Almacenamos en variables los datos obtenidos
+        partner_name = partner_data[0]['name']
+        partner_vat = partner_data[0]['vat']
+        partner_extension = partner_data[0]['l10n_bo_extension'] or ''
+        partner_identification_type = partner_data[0]['l10n_latam_identification_type_id'][1]
+        
+
+   
+        # Crear la factura en estado de borrador llenando los campos necesarios con la información del contacto y el producto
         invoice_id = conn['models'].execute_kw(
             conn['db'], conn['uid'], conn['password'],
             'account.move', 'create', [{
                 'move_type': 'out_invoice',
-                'partner_id': partner_id,
+                'partner_id': [partner_id, partner_name],
+                'vr_nit_ci': partner_vat,
+                'vr_extension': partner_extension,
+
                 'invoice_line_ids': [
                     [0, 0, {
                         'product_id': product_id,
@@ -99,23 +157,51 @@ async def create_draft_invoice(request: Request, token: str = Depends(verify_tok
                 ]
             }]
         )
-        if not invoice_id:
-            logger.error("No se pudo crear la factura en estado de borrador.")
-            raise HTTPException(
-                status_code=500,
-                detail={
-                    "error": "Error al crear la factura",
-                    "detail": "No se pudo crear la factura en estado de borrador."
-                }
-            )
-        logger.info(f"Factura en borrador creada con ID: {invoice_id}")
 
+        if not invoice_id:
+            raise HTTPException(status_code=500, detail="No se pudo crear la factura en estado de borrador.")
+        
         return {
             "success": True,
             "message": "Proceso exitoso.",
             "invoice_id": invoice_id,
             "product_price": list_price  # Opcional: Devolver el precio usado
         }
+        
+
+        # # Paso 3: Crear la factura en estado de borrador con el precio del producto
+        # logger.info("Creando la factura en estado de borrador...")
+        # invoice_id = conn['models'].execute_kw(
+        #     conn['db'], conn['uid'], conn['password'],
+        #     'account.move', 'create', [{
+        #         'move_type': 'out_invoice',
+        #         'partner_id': partner_id,
+        #         'invoice_line_ids': [
+        #             [0, 0, {
+        #                 'product_id': product_id,
+        #                 'quantity': 1,
+        #                 'price_unit': list_price  # Usar el precio del producto
+        #             }]
+        #         ]
+        #     }]
+        # )
+        # if not invoice_id:
+        #     logger.error("No se pudo crear la factura en estado de borrador.")
+        #     raise HTTPException(
+        #         status_code=500,
+        #         detail={
+        #             "error": "Error al crear la factura",
+        #             "detail": "No se pudo crear la factura en estado de borrador."
+        #         }
+        #     )
+        # logger.info(f"Factura en borrador creada con ID: {invoice_id}")
+
+        # return {
+        #     "success": True,
+        #     "message": "Proceso exitoso.",
+        #     "invoice_id": invoice_id,
+        #     "product_price": list_price  # Opcional: Devolver el precio usado
+        # }
 
     except HTTPException as e:
         raise e  # Re-lanzar excepciones HTTP

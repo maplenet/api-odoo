@@ -27,7 +27,7 @@ async def login(request: Request, response: Response):
         if "common" not in conn or "models" not in conn:
             raise HTTPException(status_code=500, detail="Error en la conexión con Odoo.")
 
-        # **Autenticar usuario con Odoo**
+         # **Autenticar usuario con Odoo**
         user_id = conn["common"].authenticate(conn["db"], email, password, {})
 
         if not user_id:
@@ -62,7 +62,7 @@ async def login(request: Request, response: Response):
             value=access_token,
             httponly=False,
             secure=False,  
-            samesite="Lax"
+            samesite="lax"
         )
 
         return response

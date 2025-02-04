@@ -30,6 +30,7 @@ def create_verification_code(email: str):
         """, (email, code))
         conn.commit()
 
+
     # Enviar el código por correo electrónico
     send_email(
         to_email=email,
