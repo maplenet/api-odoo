@@ -113,49 +113,6 @@ async def change_password(request: Request):
         # Error inesperado
         raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
     
-# TODO: Verificar el funcionamiento de la función    
-# Restablecer la contraseña de un usuario
-@router.post("/reset_password")
-async def reset_password(request: Request):
-    odoo_conn = get_odoo_connection()
-    try:
-        # Obtener los datos del cuerpo de la solicitud
-        body = await request.json()
-        email = body.get("email")
-
-        # Validar que el campo de correo electrónico esté presente
-        if not email:
-            raise HTTPException(status_code=400, detail="El campo 'email' es obligatorio.")
-
-        # Buscar el usuario por correo electrónico
-        user_ids = odoo_conn['models'].execute_kw(
-            odoo_conn['db'], odoo_conn['uid'], odoo_conn['password'],
-            'res.users', 'search', [[('email', '=', email)]]
-        )
-        if not user_ids:
-            raise HTTPException(status_code=404, detail="Usuario no encontrado.")
-
-        # Enviar correo de restablecimiento de contraseña
-        response = odoo_conn['models'].execute_kw(
-            odoo_conn['db'], odoo_conn['uid'], odoo_conn['password'],
-            'res.users', 'action_reset_password', [user_ids]
-        )
-
-        # Registrar la respuesta para depuración
-        print(f"Respuesta de action_reset_password: {response}")
-
-        if not response:
-            raise HTTPException(status_code=500, detail="No se pudo enviar el correo de restablecimiento de contraseña.")
-
-        return {"detail": "Correo de restablecimiento de contraseña enviado exitosamente."}
-
-    except HTTPException as http_error:
-        raise http_error
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
-
-
-# Actualizar un usuario smtp.gmail.com
 
 # Actualizar solo la contraseña de un usuario por medio de su id
 @router.post("/update_password")
@@ -190,7 +147,7 @@ async def update_password(request: Request):
         # Error inesperado
         raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
 
-@router.get("/{user_id}")
+@router.get("/get/{user_id}")
 async def get_user_with_service(user_id: int, token=Depends(verify_token)):
     conn = get_odoo_connection()
     try:
@@ -309,3 +266,21 @@ async def get_user_all(user_id: int, token=Depends(verify_token)):
         # Manejo de errores genérico
         raise HTTPException(status_code=500, detail=f"Error interno: {e}")
 
+# Actualizar uno o varios campos de un usuario por su id
+@router.put("/update/{user_id}")
+async def update_user(user_id: int, request: Request, token=Depends(verify_token)):
+    conn = get_odoo_connection()
+    try:
+        # Obtener los datos del cuerpo de la solicitud
+        body = await request.json()
+
+        # Llamada síncrona a Odoo
+        result = conn['models'].execute_kw(
+            conn['db'], conn['uid'], conn['password'],
+            'res.users', 'write', [[user_id], body]
+        )
+        # Devolver el resultado de la operación
+        return {"detail": "Proceso exitoso.", "result": result}
+    except Exception as e:
+        # Manejo de errores genérico
+        raise HTTPException(status_code=500, detail=f"Error interno: {e}")
