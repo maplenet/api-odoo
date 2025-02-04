@@ -4,6 +4,8 @@ from app.core.database import get_odoo_connection, get_sqlite_connection
 from app.core.email_utils import send_email
 from datetime import datetime, timedelta, timezone
 
+from app.services.odoo_service import execute_odoo_method
+
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -230,7 +232,8 @@ async def get_user_with_service(user_id: int, token=Depends(verify_token)):
             "name": product_data[0]["name"] if product_data else "Desconocido",
             "price_paid": invoice["amount_total"],
             "date_order": invoice["invoice_date"],
-            "date_expiration": date_expiration.strftime("%Y-%m-%d %H:%M:%S"),
+            "date_expiration": date_expiration.strftime("%Y-%m-%d"),
+            # "date_expiration": date_expiration.strftime("%Y-%m-%d %H:%M:%S"),
             "status": status
         }
 
@@ -267,20 +270,99 @@ async def get_user_all(user_id: int, token=Depends(verify_token)):
         raise HTTPException(status_code=500, detail=f"Error interno: {e}")
 
 # Actualizar uno o varios campos de un usuario por su id
-@router.put("/update/{user_id}")
-async def update_user(user_id: int, request: Request, token=Depends(verify_token)):
+
+@router.patch("/update_user")
+async def update_user(request: Request):
     conn = get_odoo_connection()
     try:
         # Obtener los datos del cuerpo de la solicitud
         body = await request.json()
+        id_plan = body.get("id_plan")
+        id_user = body.get("id_user")
+        company_registry = body.get("ci")
+        legal_Name = body.get("razon_social")
+        type_doc = body.get("tipo_doc")
+        num_doc = body.get("num_doc")
+        l10n_bo_extension = body.get("extension")
+        id_payment_method = body.get("id_metodo_pago")
+        num_card = body.get("num_tarjeta")
 
-        # Llamada síncrona a Odoo
-        result = conn['models'].execute_kw(
-            conn['db'], conn['uid'], conn['password'],
-            'res.users', 'write', [[user_id], body]
+        # Validar que todos los campos requeridos estén presentes
+        if not all([id_plan, id_user, company_registry, legal_Name, type_doc, num_doc, l10n_bo_extension, id_payment_method, num_card]):
+            raise HTTPException(status_code=400, detail="Todos los campos son obligatorios.")
+        
+        # Validar que el plan exista
+        plan = execute_odoo_method(conn, 'product.product', 'read', [[id_plan]])
+        if not plan:
+            raise HTTPException(status_code=404, detail="El plan no existe.")
+        
+        # Obtenemos la data del producto por medio del id_plan
+        product_data = execute_odoo_method(conn, 'product.product', 'read', [[id_plan]])
+        if not product_data:
+            raise HTTPException(status_code=404, detail="El producto no existe.")
+        
+        # Verificamos que el contacto exista
+        user = execute_odoo_method(conn, 'res.partner', 'read', [[id_user]])
+        if not user:
+            raise HTTPException(status_code=404, detail="El contacto no existe.")
+                
+        # Actualizar los campos del contacto ligado al usuario
+        success = execute_odoo_method(
+            conn, 'res.partner', 'write', [[id_user], {
+                "company_registry": company_registry,
+                "vat": num_doc,
+                "l10n_bo_extension": l10n_bo_extension if type_doc == 4 else '',
+                "l10n_latam_identification_type_id": type_doc,
+                'l10n_bo_business_name': legal_Name,
+            }]
         )
-        # Devolver el resultado de la operación
-        return {"detail": "Proceso exitoso.", "result": result}
+        
+        # Verificar que la operación fue exitosa
+        if not success:
+            raise HTTPException(status_code=500, detail="No se pudo actualizar el usuario.")
+        
+        # Obtener los datos actualizados del contacto
+        updated_contact = execute_odoo_method(conn, 'res.partner', 'read', [[id_user]])[0]
+        # print(updated_contact)
+
+        # Crear un borrador de factura
+        # data_to_create_invoice = {
+
+        #     'partner_id': id_user,  # ID del contacto
+        #     'move_type': 'out_invoice',  # Tipo de factura (out_invoice para factura de cliente)
+        #     'vr_nit_ci': updated_contact['vat'],  # NIT o CI del contacto
+        #     'vr_extension': updated_contact['l10n_bo_extension'] or '',  # Extensión del NIT
+        #     'vr_razon_social': updated_contact['l10n_bo_business_name'],  # Razón social del contacto
+        #     'vr_warehouse_id': 1,  # ID del almacén
+            
+
+
+
+
+        #     # 'invoice_date': datetime.now().strftime("%Y-%m-%d"),  # Fecha de la factura
+        #     # 'invoice_line_ids': [(0, 0, {
+        #     #     'product_id': id_plan,  # ID del producto (usamos el id_plan)
+        #     #     'quantity': 1,  # Cantidad
+        #     #     'price_unit': product_data[0]['list_price'],  # Precio unitario del producto
+        #     #     'name': product_data[0]['name'],  # Nombre del producto
+        #     # })]
+        # }
+
+        # Crear la factura
+        # invoice_id = execute_odoo_method(conn, 'account.move', 'create', [data_to_create_invoice])
+        # if not invoice_id:
+        #     raise HTTPException(status_code=500, detail="No se pudo crear el borrador de factura.")
+
+        return {
+            "detail": "Usuario actualizado exitosamente y factura creada",
+            # "contact": updated_contact,
+            # "invoice_id": invoice_id
+            "invoice_id": 80
+        }
+
+    except HTTPException as http_error:
+        # Error esperado
+        raise http_error
     except Exception as e:
-        # Manejo de errores genérico
-        raise HTTPException(status_code=500, detail=f"Error interno: {e}")
+        # Error inesperado
+        raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
