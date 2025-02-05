@@ -31,7 +31,6 @@
 │   │   ├── system.py
 │   │   └── users.py
 │   └── services
-│       ├── auth_service.py
 │       ├── __init__.py
 │       ├── odoo_service.py
 │       ├── __pycache__
@@ -77,4 +76,4 @@
 │   └── pyvenv.cfg
 └── verification_codes.db
 
-17 directories, 61 files
+17 directories, 60 files
