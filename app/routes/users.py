@@ -402,7 +402,7 @@ async def update_user(request: Request):
         if not plan:
             raise HTTPException(status_code=404, detail="El plan no existe.")
         
-        # Obtenemos la data del producto por medio del id_plan
+        # Validar la data del producto por medio del id_plan
         product_data = execute_odoo_method(conn, 'product.product', 'read', [[id_plan]])
         if not product_data:
             raise HTTPException(status_code=404, detail="El producto no existe.")
@@ -411,6 +411,12 @@ async def update_user(request: Request):
         user = execute_odoo_method(conn, 'res.partner', 'read', [[id_user]])
         if not user:
             raise HTTPException(status_code=404, detail="El contacto no existe.")
+        
+        if type_doc != "1":
+            l10n_bo_extension = ""
+        
+        if len(num_card) != 8:
+            raise HTTPException(status_code=400, detail="El número de tarjeta debe tener 8 dígitos.")
                 
         # Actualizar los campos del contacto ligado al usuario
         success = execute_odoo_method(
@@ -422,7 +428,7 @@ async def update_user(request: Request):
                 'l10n_bo_business_name': legal_Name,
             }]
         )
-        
+
         # Verificar que la operación fue exitosa
         if not success:
             raise HTTPException(status_code=500, detail="No se pudo actualizar el usuario.")
@@ -430,21 +436,130 @@ async def update_user(request: Request):
         # Obtener los datos actualizados del contacto
         updated_contact = execute_odoo_method(conn, 'res.partner', 'read', [[id_user]])[0]
 
+        print("hasta aqui ok")
+
+        # ----------------------------Flujo de creación de factura--------------------------------------
+
+
+        # Obtener los detalles del producto
+        product = product_data[0]
+        product_id = product['id']
+        product_name = product['name']
+        product_price = product['list_price']  # Precio unitario del producto
+
+        # Construir la línea de la factura
+        invoice_line = (0, 0, {
+            'product_id': product_id,  # ID del producto
+            'name': product_name,  # Nombre del producto
+            'quantity': 1,  # Cantidad (en este caso, 1)
+            'price_unit': product_price,  # Precio unitario
+            'tax_ids': [(6, 0, [1])],  # Impuestos (vacío por defecto)
+        })
+
+        # Crear el objeto para la factura
+        data_to_create_invoice = {
+            'partner_id': id_user,
+            'move_type': 'out_invoice',  # Tipo de factura (out_invoice para factura de cliente)
+            "currency_id": 63,  # ID de la moneda (BOB)
+            'vr_nit_ci': num_doc,  # NIT o CI del contacto
+            'vr_extension': l10n_bo_extension or '',  # Extensión del NIT
+            'vr_razon_social': legal_Name,  # Razón social del contacto
+            'vr_warehouse_id': 1,  # ID del almacén
+            'vr_metodo_pago': id_payment_method,  # ID del método de pago
+            'vr_nro_tarjeta': num_card,
+            'vr_tipo_documento_identidad': type_doc,
+            'invoice_line_ids': [invoice_line],  # Línea de la factura con el producto
+        }
+
+        # Crear la factura como borrador
+
+        invoice_id = execute_odoo_method(conn, 'account.move', 'create', [data_to_create_invoice])
+        
+
+        # -------------------------------------CONFIRMAR FACTURA-------------------------------------
+  
+        execute_odoo_method(conn, 'account.move', 'action_post', [[invoice_id]])
+ 
+        # -------------------------------------Registrar Pago---------------------------------------- ACA
+
+        # Crear el pago
+
+        invoice_data = execute_odoo_method(conn, 'account.move', 'read', [[invoice_id], ['amount_total', 'currency_id', 'partner_id', 'name']])[0]
+
+        print(invoice_data)
+        payment_data = {
+            'payment_type': 'inbound',  # Tipo de pago (entrante)
+            'journal_id': 1,  # Diario de pago (ajusta este valor según tu configuración)
+            'payment_method_line_id': "1",  # Método de pago (ajusta este valor según tu configuración)
+            'partner_bank_id': "1",  # Cuenta bancaria receptora (ajusta este valor según tu configuración)
+            'amount': invoice_data['amount_total'],  # Monto total de la factura
+            'highest_name': invoice_data['name'],  # Nombre de la factura
+            'payment_date': datetime.now().strftime("%Y-%m-%d"),  # Fecha de pago
+            'currency_id': invoice_data['currency_id'][0],  # Moneda
+            'partner_id': invoice_data['partner_id'][0],  # ID del contacto
+        }
+
+        # Crear el pago
+        payment_register_id = execute_odoo_method(conn, 'account.payment', 'create', [payment_data])
+
+        # ------------------------------------------------------- Deepseek generado ---------------------------------------
+
+        # # Obtener los detalles de la factura
+        # invoice_data = execute_odoo_method(conn, 'account.move', 'read', [[invoice_id], ['amount_total', 'currency_id', 'partner_id', 'name']])[0]
+
+        # # Preparar los datos para el registro del pago
+        # payment_data = {
+        #     'payment_type': 'inbound',  # Tipo de pago (entrante)
+        #     'communication': invoice_data['name'],  # Nombre de la factura
+        #     'payment_date': datetime.now().strftime("%Y-%m-%d"),  # Fecha de pago
+        #     'amount': invoice_data['amount_total'],  # Monto total de la factura
+        #     'currency_id': invoice_data['currency_id'][0],  # Moneda
+        #     'partner_id': invoice_data['partner_id'][0],  # ID del contacto
+        #     'journal_id': 1,  # Diario de pago (ajusta este valor según tu configuración)
+        #     'partner_bank_id': 1,  # Cuenta bancaria receptora (ajusta este valor según tu configuración)
+        #     'payment_method_line_id': 1,  # Método de pago (ajusta este valor según tu configuración)
+        # }
+
+        # # Agregar el contexto
+        # context = {
+        #     'active_ids': [invoice_id],  # IDs de las facturas
+        #     'active_model': 'account.move',  # Modelo de la factura
+        #     'active_id': invoice_id  # ID de la factura activa
+        # }
+
+        # # Crear el registro de pago
+        # payment_register_id = execute_odoo_method(
+        #     conn, 'account.payment.register', 'create', [[payment_data]], {'context': context}
+        # )
+
+        # # Confirmar el pago
+        # execute_odoo_method(conn, 'account.payment.register', 'action_create_payments', [[payment_register_id]])
+
+
+        # -------------------------------------------------------------------------- HASTA ACA
+
+
+        # ------------------------------------ CONEXI{ON A PONTIS ------------------------------------
         # Llamar a la API externa para autenticarse
-        login_response = await login_to_external_api()
-        api_token = login_response.get("token")  # Obtener el token de autenticación
+        # login_response = await login_to_external_api()
+        # api_token = login_response.get("token")  # Obtener el token de autenticación
 
-        # Construir el cuerpo de la solicitud para crear el cliente en Pontis
-        customer_data = build_customer_data(id_user, updated_contact, id_plan)
+        # # Construir el cuerpo de la solicitud para crear el cliente en Pontis
+        # customer_data = build_customer_data(id_user, updated_contact, id_plan)
 
-        # Llamar a la API de creación de clientes en Pontis
-        create_customer_response = await create_customer_in_pontis(api_token, customer_data)
+        # # Llamar a la API de creación de clientes en Pontis
+        # create_customer_response = await create_customer_in_pontis(api_token, customer_data)
+        # -------------------------------------------------------------------------------------------
 
         return {
             "detail": "Usuario actualizado exitosamente y cliente creado en Pontis.",
-            "login_response": login_response,
+            "invoice_id": invoice_id,
+            "payment_id": payment_register_id,
+
+            # "invoice_id_confirmed": id_invoice_confirmed,
+            # "login_response": login_response,
             # "contact": updated_contact,
-            "pontis_response": create_customer_response
+            # "pontis_response": create_customer_response
         }
 
     except HTTPException as http_error:
@@ -453,3 +568,5 @@ async def update_user(request: Request):
     except Exception as e:
         # Error inesperado
         raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
+    
+
