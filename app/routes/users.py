@@ -426,6 +426,8 @@ async def update_user(request: Request):
             'invoice_line_ids': [invoice_line],  # Línea de la factura con el producto
         }
 
+        print(data_to_create_invoice)
+
         # Crear la factura como borrador
 
         invoice_id = execute_odoo_method(conn, 'account.move', 'create', [data_to_create_invoice])

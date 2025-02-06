@@ -37,21 +37,22 @@ async def login(request: Request, response: Response):
         users = conn["models"].execute_kw(
             conn["db"], conn["uid"], conn["password"],
             "res.users", "search_read", [[["id", "=", user_id]]], 
-            {"fields": ["id", "name", "login", "email"]}
+            {"fields": ["id", "name", "login", "email", "partner_id"]}
         )
 
         if not users:
             raise HTTPException(status_code=404, detail="No se encontró el usuario.")
 
         user = users[0]  # Usuario autenticado
-
         # **Generar token**
         access_token = create_access_token(user["id"], email)
 
+    
         # **Configurar respuesta con cookie**
         response = JSONResponse(
             content={
                 "user_id": user["id"], 
+                "partner_id": user["partner_id"][0],
                 # "email": user["email"], 
                 # "access_token": access_token, 
                 "detail": "Proceso exitoso."
