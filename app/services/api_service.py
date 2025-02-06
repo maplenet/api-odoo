@@ -92,13 +92,13 @@ def build_customer_data(id_user, contact_data, id_plan):
             "address1": contact_data.get("street", ""),  # Dirección del contacto
             "address2": "",
             "address3": "",
-            "city": "",  # Ciudad fija
+            "city": "La Paz",  # Ciudad fija # TODO: revisar
             "easLocationCode": "",
             "email": contact_data.get("email", ""),  # Correo del contacto
             "homePhone": "",
             "mobilePhone": mobile,  # Móvil del contacto
             "note": "",
-            "state": "",  # Estado fijo
+            "state": "La Paz",  # Estado fijo # TODO: revisar
             "workPhone": "",
             "zipcode": "0000"  # Código postal fijo
         },
@@ -126,7 +126,7 @@ def build_customer_data(id_user, contact_data, id_plan):
             },
             {
                 "effectiveDt": effective_dt,  # Fecha actual
-                "expireDt": "recuperar",  # Fecha actual + 30 días
+                "expireDt": expire_dt,  # Fecha actual + 30 días
                 "serviceMenu": {
                     "serviceMenuId": service_menu_id  # serviceMenuId según el plan
                 }
