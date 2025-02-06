@@ -64,71 +64,68 @@ def build_customer_data(id_user, contact_data, id_plan):
             "autoProvCountStationary": "2",
             "autoProvisionCount": "0",
             "autoProvisionCountMobile": "2",
-            "customerId": "MAP003",  # Prefijo MAP + id_user
-            # "customerId": f"MAP{id_user}",  # Prefijo MAP + id_user
+            "customerId": "MAP003", 
             "favoritesEnabled": "Y",
-            "firstName": contact_data.get("name",""),  # Nombre del contacto
+            "firstName": contact_data.get("name",""), 
             "lastName": contact_data.get("name",""),  
             "hasVod": "Y",
             "localizationId": "71",
-            "pin": pin,  # Últimos 4 dígitos del móvil
+            "pin": pin, 
             "status": "A",
             "displayTimeout": "10",
             "multicastTunein": "N",
             "multicastenabled": "N"
         },
         "customerAccount": {
-            "effectiveDt": effective_dt,  # Fecha actual
-            "expireDt": expire_dt,  # Fecha actual + 30 días
-            "primaryAudioLanguage": "spa",
+            "effectiveDt": effective_dt, 
+            "expireDt": expire_dt,  
             "secondaryAudioLanguage": "eng",
             "primarySubtitleLanguage": "spa",
             "secondarySubtitleLanguage": "eng",
-            # "login": f"MAP{id_user}",  # Igual que customerId
-            "login": contact_data.get("email", ""), # Igual que customerId
-            "password": "abc123"  # Contraseña fija # TODO: REVISAR
+            "login": contact_data.get("email", ""), 
+            "password": "abc123" 
         },
         "customerInfo": {
-            "address1": contact_data.get("street", ""),  # Dirección del contacto
+            "address1": contact_data.get("street", ""),  
             "address2": "",
             "address3": "",
-            "city": "La Paz",  # Ciudad fija # TODO: revisar
+            "city": "La Paz",  
             "easLocationCode": "",
-            "email": contact_data.get("email", ""),  # Correo del contacto
+            "email": contact_data.get("email", ""), 
             "homePhone": "",
-            "mobilePhone": mobile,  # Móvil del contacto
+            "mobilePhone": mobile,  
             "note": "",
-            "state": "La Paz",  # Estado fijo # TODO: revisar
+            "state": "La Paz",  
             "workPhone": "",
-            "zipcode": "0000"  # Código postal fijo
+            "zipcode": "0000"  
         },
         "subscribeService": [
             {
-                "effectiveDt": effective_dt,  # Fecha actual
-                "expireDt": "",  # Fecha actual + 30 días
+                "effectiveDt": effective_dt,  
+                "expireDt": "",  
                 "serviceMenu": {
-                    "serviceMenuId": "6213"  # serviceMenuId según el plan
+                    "serviceMenuId": "6213"  
                 }
             },
             {
-                "effectiveDt": effective_dt,  # Fecha actual
-                "expireDt": "",  # Fecha actual + 30 días
+                "effectiveDt": effective_dt,  
+                "expireDt": "",  
                 "serviceMenu": {
-                    "serviceMenuId": "6214"  # serviceMenuId según el plan
+                    "serviceMenuId": "6214"  
                 }
             },
             {
-                "effectiveDt": effective_dt,  # Fecha actual
-                "expireDt": "",  # Fecha actual + 30 días
+                "effectiveDt": effective_dt,  
+                "expireDt": "",  
                 "serviceMenu": {
-                    "serviceMenuId": "6215"  # serviceMenuId según el plan
+                    "serviceMenuId": "6215"  
                 }
             },
             {
-                "effectiveDt": effective_dt,  # Fecha actual
-                "expireDt": expire_dt,  # Fecha actual + 30 días
+                "effectiveDt": effective_dt,  
+                "expireDt": expire_dt,  
                 "serviceMenu": {
-                    "serviceMenuId": service_menu_id  # serviceMenuId según el plan
+                    "serviceMenuId": service_menu_id  
                 }
             },
         ]
