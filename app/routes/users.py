@@ -486,21 +486,40 @@ async def update_user(request: Request):
 
         invoice_data = execute_odoo_method(conn, 'account.move', 'read', [[invoice_id], ['amount_total', 'currency_id', 'partner_id', 'name']])[0]
 
+
+        payment_methods = execute_odoo_method(conn, 'account.payment.method.line', 'search_read', [[]], {'fields': ['id', 'name']})
+        print(payment_methods)
+
+
+        journals = execute_odoo_method(conn, 'account.journal', 'search_read', [[]], {'fields': ['id', 'name', 'type']})
+        print(journals)
+
+
+        payment_methods = execute_odoo_method(conn, 'account.payment.method.line', 'search_read', [[('journal_id', '=', 7)]], {'fields': ['id', 'name']})
+        print(payment_methods)
+
+
         print(invoice_data)
         payment_data = {
             'payment_type': 'inbound',  # Tipo de pago (entrante)
-            'journal_id': 1,  # Diario de pago (ajusta este valor según tu configuración)
-            'payment_method_line_id': "1",  # Método de pago (ajusta este valor según tu configuración)
-            'partner_bank_id': "1",  # Cuenta bancaria receptora (ajusta este valor según tu configuración)
+            'journal_id': 7,  # Diario de pago (ajusta este valor según tu configuración)
+            'payment_method_line_id': 3,  # Método de pago (ajusta este valor según tu configuración)
+            'partner_bank_id': 1,  # Cuenta bancaria receptora (ajusta este valor según tu configuración)
             'amount': invoice_data['amount_total'],  # Monto total de la factura
             'highest_name': invoice_data['name'],  # Nombre de la factura
-            'payment_date': datetime.now().strftime("%Y-%m-%d"),  # Fecha de pago
+            'date': datetime.now().strftime("%Y-%m-%d"),  # Fecha de pago
             'currency_id': invoice_data['currency_id'][0],  # Moneda
             'partner_id': invoice_data['partner_id'][0],  # ID del contacto
+            'payment_state': 'paid',
         }
 
         # Crear el pago
         payment_register_id = execute_odoo_method(conn, 'account.payment', 'create', [payment_data])
+
+        # execute_odoo_method(conn, 'account.payment', 'action_post', [[payment_register_id]])
+
+        # execute_odoo_method(conn, 'account.payment', 'reconcile', [[payment_register_id]])
+
 
         # ------------------------------------------------------- Deepseek generado ---------------------------------------
 
