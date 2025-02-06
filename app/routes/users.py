@@ -3,9 +3,82 @@ from app.core.security import verify_token
 from app.core.database import get_odoo_connection, get_sqlite_connection
 from app.core.email_utils import send_email
 from datetime import datetime, timedelta, timezone
+from app.services.api_service import build_customer_data, create_customer_in_pontis, login_to_external_api
 from app.services.odoo_service import execute_odoo_method
 
 router = APIRouter(prefix="/users", tags=["users"])
+
+# @router.post("/create")
+# async def create_user(request: Request):
+#     try:
+#         # Obtener los datos del cuerpo de la solicitud
+#         body = await request.json()
+#         name = body.get("name")
+#         email = body.get("email")
+#         mobile = body.get("mobile")
+
+#         # Validar que todos los campos requeridos estén presentes
+#         if not all([name, email, mobile]):
+#             raise HTTPException(status_code=400, detail="Todos los campos son obligatorios.")
+
+#         # Verificar el correo en la tabla de verification_codes
+#         sqlite_conn = get_sqlite_connection()
+#         cursor = sqlite_conn.cursor()
+#         cursor.execute("SELECT * FROM verification_codes WHERE email = ? ORDER BY id DESC LIMIT 1", (email,))
+#         verification_record = cursor.fetchone()
+
+#         if not verification_record:
+#             raise HTTPException(status_code=400, detail="El correo no ha sido registrado para verificación.")
+
+#         # Verificar el estado del registro
+#         status = verification_record[2]  # Índice del estado en la tabla
+#         if status == 0:
+#             raise HTTPException(status_code=400, detail="El correo no ha sido verificado.")
+
+
+#         # Obtener la conexión a Odoo
+#         odoo_conn = get_odoo_connection()
+
+#         # Verificar que el correo no esté registrado en Odoo
+#         existing_user = odoo_conn['models'].execute_kw(
+#             odoo_conn['db'], odoo_conn['uid'], odoo_conn['password'],
+#             'res.users', 'search_count', [[('login', '=', email)]]
+#         )
+#         if existing_user:
+#             raise HTTPException(status_code=400, detail="El correo ya está registrado en el sistema.")
+
+#         # Obtener el res_id del grupo "Portal"
+#         group_portal = odoo_conn['models'].execute_kw(
+#             odoo_conn['db'], odoo_conn['uid'], odoo_conn['password'],
+#             'ir.model.data', 'search_read',
+#             [[('model', '=', 'res.groups'), ('module', '=', 'base'), ('name', '=', 'group_portal')]],
+#             {'fields': ['res_id'], 'limit': 1}
+#         )
+#         if not group_portal:
+#             raise HTTPException(status_code=500, detail="No se encontró el grupo Portal en Odoo.")
+#         group_portal_id = group_portal[0]['res_id']
+
+#         # Crear el usuario en Odoo
+#         user_id = odoo_conn['models'].execute_kw(
+#             odoo_conn['db'], odoo_conn['uid'], odoo_conn['password'],
+#             'res.users', 'create', [{
+#                 'login': email,
+#                 'name': name,
+#                 'email': email,
+#                 'mobile': mobile,
+#                 'lang': 'es_MX',  # Establecer el idioma a español de México
+#                 'groups_id': [(6, 0, [group_portal_id])]  # Asignar grupo Portal
+#             }]
+#         )
+
+#         return {"detail": "Proceso exitoso.", "id": user_id}
+
+#     except HTTPException as http_error:
+#         raise http_error
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
+#     finally:
+#         sqlite_conn.close()
 
 @router.post("/create")
 async def create_user(request: Request):
@@ -34,22 +107,17 @@ async def create_user(request: Request):
         if status == 0:
             raise HTTPException(status_code=400, detail="El correo no ha sido verificado.")
 
-
         # Obtener la conexión a Odoo
         odoo_conn = get_odoo_connection()
 
         # Verificar que el correo no esté registrado en Odoo
-        existing_user = odoo_conn['models'].execute_kw(
-            odoo_conn['db'], odoo_conn['uid'], odoo_conn['password'],
-            'res.users', 'search_count', [[('login', '=', email)]]
-        )
+        existing_user = execute_odoo_method(odoo_conn, 'res.users', 'search_count', [[('login', '=', email)]])
         if existing_user:
             raise HTTPException(status_code=400, detail="El correo ya está registrado en el sistema.")
 
         # Obtener el res_id del grupo "Portal"
-        group_portal = odoo_conn['models'].execute_kw(
-            odoo_conn['db'], odoo_conn['uid'], odoo_conn['password'],
-            'ir.model.data', 'search_read',
+        group_portal = execute_odoo_method(
+            odoo_conn, 'ir.model.data', 'search_read',
             [[('model', '=', 'res.groups'), ('module', '=', 'base'), ('name', '=', 'group_portal')]],
             {'fields': ['res_id'], 'limit': 1}
         )
@@ -58,9 +126,8 @@ async def create_user(request: Request):
         group_portal_id = group_portal[0]['res_id']
 
         # Crear el usuario en Odoo
-        user_id = odoo_conn['models'].execute_kw(
-            odoo_conn['db'], odoo_conn['uid'], odoo_conn['password'],
-            'res.users', 'create', [{
+        user_id = execute_odoo_method(
+            odoo_conn, 'res.users', 'create', [{
                 'login': email,
                 'name': name,
                 'email': email,
@@ -273,7 +340,7 @@ async def update_user(request: Request):
         # Obtener los datos del cuerpo de la solicitud
         body = await request.json()
         id_plan = body.get("id_plan")
-        id_user = body.get("id_user")
+        id_user = body.get("id_usuario")
         company_registry = body.get("ci")
         legal_Name = body.get("razon_social")
         type_doc = body.get("tipo_doc")
@@ -285,6 +352,10 @@ async def update_user(request: Request):
         # Validar que todos los campos requeridos estén presentes
         if not all([id_plan, id_user, company_registry, legal_Name, type_doc, num_doc, l10n_bo_extension, id_payment_method, num_card]):
             raise HTTPException(status_code=400, detail="Todos los campos son obligatorios.")
+        
+        # Validar que los campos no sean espacios en blanco por ejemplo " " y quitar espacios en blanco al principio y al final
+        if company_registry.strip() == "" or legal_Name.strip() == "" or num_doc.strip() == "":
+            raise HTTPException(status_code=400, detail="Los campos no pueden estar vacíos.")
         
         # Validar que el plan exista
         plan = execute_odoo_method(conn, 'product.product', 'read', [[id_plan]])
@@ -337,7 +408,7 @@ async def update_user(request: Request):
             'name': product_name,  # Nombre del producto
             'quantity': 1,  # Cantidad (en este caso, 1)
             'price_unit': product_price,  # Precio unitario
-            'tax_ids': [(6, 0, [1])],  # Impuestos (vacío por defecto)
+            'tax_ids': [(6, 0, [1])],  # Impuestos
         })
 
         # Crear el objeto para la factura
@@ -404,18 +475,22 @@ async def update_user(request: Request):
         # Confirmar el pago
         execute_odoo_method(conn, 'account.payment.register', 'action_create_payments', [[payment_register_id[0]]])
 
-      
+
 
         # ------------------------------------ CONEXIÓN A PONTIS ------------------------------------
+
+        # Obtene datos de contacto actualizados
+        updated_contact = execute_odoo_method(conn, 'res.partner', 'read', [[id_user]])[0]
+
         # Llamar a la API externa para autenticarse
-        # login_response = await login_to_external_api()
-        # api_token = login_response.get("token")  # Obtener el token de autenticación
+        login_response = await login_to_external_api()
+        api_token = login_response.get("token")  # Obtener el token de autenticación
 
-        # # Construir el cuerpo de la solicitud para crear el cliente en Pontis
-        # customer_data = build_customer_data(id_user, updated_contact, id_plan)
+        # Construir el cuerpo de la solicitud para crear el cliente en Pontis
+        customer_data = build_customer_data(id_user, updated_contact, id_plan)
 
-        # # Llamar a la API de creación de clientes en Pontis
-        # create_customer_response = await create_customer_in_pontis(api_token, customer_data)
+        # Llamar a la API de creación de clientes en Pontis
+        await create_customer_in_pontis(api_token, customer_data)
         # -------------------------------------------------------------------------------------------
 
        
