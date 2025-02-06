@@ -144,9 +144,11 @@ def build_customer_data(id_user, contact_data, id_plan):
 
     # Obtener el serviceMenuId según el id_plan
     service_menu_id_map = {
-        11: "6213",  # M+ Básico
-        12: "6215",  # M+ Medium
-        13: "6217",  # M+ Premium
+        999999997: "6213",  # M+ Básico servicio
+        999999998: "6214",  # M+ mobile
+        999999999: "6215",  # M+ estacionario
+        11: "6212",  # M+ Básico paquete
+        13: "6217",  # M+ Premium paquete
     }
     service_menu_id = service_menu_id_map.get(id_plan, "6213")  # Por defecto, M+ Básico
 
@@ -157,14 +159,14 @@ def build_customer_data(id_user, contact_data, id_plan):
     # Construir el cuerpo de la solicitud
     customer_data = {
         "customer": {
-            "autoProvCountStationary": "1",
+            "autoProvCountStationary": "2",
             "autoProvisionCount": "0",
-            "autoProvisionCountMobile": "1",
+            "autoProvisionCountMobile": "2",
             "customerId": "MAP003",  # Prefijo MAP + id_user
             # "customerId": f"MAP{id_user}",  # Prefijo MAP + id_user
             "favoritesEnabled": "Y",
             "firstName": contact_data.get("name", ""),  # Nombre del contacto
-            "lastName": "Dolores",  # Apellido vacío
+            "lastName": "QUEMADO",  # Apellido vacío //TODO agregar apellido EN LA DATA
             "hasVod": "Y",
             "localizationId": "71",
             "pin": pin,  # Últimos 4 dígitos del móvil
@@ -181,31 +183,52 @@ def build_customer_data(id_user, contact_data, id_plan):
             "primarySubtitleLanguage": "spa",
             "secondarySubtitleLanguage": "eng",
             # "login": f"MAP{id_user}",  # Igual que customerId
-            "login": "MAP003",  # Igual que customerId
-            "password": "abc123"  # Contraseña fija
+            "login": contact_data.get("email", ""), # Igual que customerId
+            "password": "abc123"  # Contraseña fija // TODO: REVISAR
         },
         "customerInfo": {
             "address1": contact_data.get("street", ""),  # Dirección del contacto
             "address2": "",
             "address3": "",
-            "city": "La Paz",  # Ciudad fija
+            "city": "",  # Ciudad fija
             "easLocationCode": "",
             "email": contact_data.get("email", ""),  # Correo del contacto
             "homePhone": "",
             "mobilePhone": mobile,  # Móvil del contacto
             "note": "",
-            "state": "La Paz",  # Estado fijo
+            "state": "",  # Estado fijo
             "workPhone": "",
             "zipcode": "0000"  # Código postal fijo
         },
         "subscribeService": [
             {
                 "effectiveDt": effective_dt,  # Fecha actual
-                "expireDt": expire_dt,  # Fecha actual + 30 días
+                "expireDt": "",  # Fecha actual + 30 días
+                "serviceMenu": {
+                    "serviceMenuId": "6213"  # serviceMenuId según el plan
+                }
+            },
+            {
+                "effectiveDt": effective_dt,  # Fecha actual
+                "expireDt": "",  # Fecha actual + 30 días
+                "serviceMenu": {
+                    "serviceMenuId": "6214"  # serviceMenuId según el plan
+                }
+            },
+            {
+                "effectiveDt": effective_dt,  # Fecha actual
+                "expireDt": "",  # Fecha actual + 30 días
+                "serviceMenu": {
+                    "serviceMenuId": "6215"  # serviceMenuId según el plan
+                }
+            },
+            {
+                "effectiveDt": effective_dt,  # Fecha actual
+                "expireDt": "recuperar",  # Fecha actual + 30 días
                 "serviceMenu": {
                     "serviceMenuId": service_menu_id  # serviceMenuId según el plan
                 }
-            }
+            },
         ]
     }
 
