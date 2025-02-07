@@ -356,7 +356,7 @@ async def update_user(request: Request):
         body = await request.json()
         id_plan = body.get("id_plan")
         id_user = body.get("id_usuario")
-        company_registry = body.get("ci")
+        # company_registry = body.get("ci")
         legal_Name = body.get("razon_social")
         type_doc = body.get("tipo_doc")
         num_doc = body.get("num_doc")
@@ -364,9 +364,26 @@ async def update_user(request: Request):
         id_payment_method = body.get("id_metodo_pago")
         num_card = body.get("num_tarjeta")
 
+        company_registry=num_doc
+
         # Validar que todos los campos requeridos estén presentes
-        if not all([id_plan, id_user, company_registry, legal_Name, type_doc, num_doc, l10n_bo_extension, id_payment_method, num_card]):
-            raise HTTPException(status_code=400, detail="Todos los campos son obligatorios.")
+        if not id_plan:
+            raise HTTPException(status_code=400, detail="El campo 'id_plan' es obligatorio.")
+        if not id_user:
+            raise HTTPException(status_code=400, detail="El campo 'id_usuario' es obligatorio.")
+        if not company_registry:
+            raise HTTPException(status_code=400, detail="El campo 'ci' es obligatorio.")
+        if not legal_Name:
+            raise HTTPException(status_code=400, detail="El campo 'razon_social' es obligatorio.")
+        if not type_doc:
+            raise HTTPException(status_code=400, detail="El campo 'tipo_doc' es obligatorio.")
+        if not num_doc:
+            raise HTTPException(status_code=400, detail="El campo 'num_doc' es obligatorio.")
+        if not id_payment_method:
+            raise HTTPException(status_code=400, detail="El campo 'id_metodo_pago' es obligatorio.")
+        if not num_card:
+            raise HTTPException(status_code=400, detail="El campo 'num_tarjeta' es obligatorio.")
+
         
         # Validar que los campos no sean espacios en blanco por ejemplo " " y quitar espacios en blanco al principio y al final
         if legal_Name.strip() == "" or num_doc.strip() == "":
@@ -514,7 +531,7 @@ async def update_user(request: Request):
         return {"detail": "Factura creada y pagada correctamente", 
                 "invoice_id": invoice_id, 
                 "payment_id": payment_register_id,
-                # "res_pontis": create_customer_response
+                "res_pontis": create_customer_response
                 }
 
     except HTTPException as http_error:
