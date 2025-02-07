@@ -54,7 +54,7 @@ async def login(request: Request, response: Response):
                 "user_id": user["id"], 
                 "partner_id": user["partner_id"][0],
                 # "email": user["email"], 
-                # "access_token": access_token, 
+                "access_token": access_token, 
                 "detail": "Proceso exitoso."
             }
         )
@@ -132,7 +132,7 @@ async def verify_email(request: Request):
     contacts = conn['models'].execute_kw(
         conn['db'], conn['uid'], conn['password'],
         'res.partner', 'search_read', [[['email', '=', email]]]
-    )
+    )   
     if contacts:
         raise HTTPException(status_code=400, detail="El correo ya está registrado.")
     

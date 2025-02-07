@@ -34,7 +34,7 @@ def build_customer_data(id_user, contact_data, id_plan):
 
     # Obtener los últimos 4 dígitos del móvil
     mobile = contact_data.get("mobile", "")
-    pin = mobile[-4:] if mobile else "0000"
+    pin = mobile[-4:] if mobile else "1234"
 
     # Obtener el serviceMenuId según el id_plan
     service_menu_id_map = {
@@ -58,17 +58,20 @@ def build_customer_data(id_user, contact_data, id_plan):
     effective_dt = datetime.now().strftime("%d/%m/%Y")
     expire_dt = (datetime.now() + timedelta(days=30)).strftime("%d/%m/%Y")
 
+    print(f"effective_dt: {effective_dt}")
+    print(f"expire_dt: {expire_dt}")
+
     # Construir el cuerpo de la solicitud
     customer_data = {
         "customer": {
-            "autoProvCountStationary": "2",
+            "autoProvCountStationary": "1",
             "autoProvisionCount": "0",
             "autoProvisionCountMobile": "2",
-            "customerId": "MAP003", 
+            "customerId": "MAP006", 
             "favoritesEnabled": "Y",
-            "firstName": contact_data.get("name",""), 
-            "lastName": contact_data.get("name",""),  
+            "firstName": "", 
             "hasVod": "Y",
+            "lastName": "maplenet",  
             "localizationId": "71",
             "pin": pin, 
             "status": "A",
@@ -78,22 +81,22 @@ def build_customer_data(id_user, contact_data, id_plan):
         },
         "customerAccount": {
             "effectiveDt": effective_dt, 
-            "expireDt": expire_dt,  
+            "expireDt": "",  
             "secondaryAudioLanguage": "eng",
             "primarySubtitleLanguage": "spa",
             "secondarySubtitleLanguage": "eng",
-            "login": contact_data.get("email", ""), 
+            "login": "MAP006", 
             "password": "abc123" 
         },
         "customerInfo": {
-            "address1": contact_data.get("street", ""),  
+            "address1": "CALLE MAPLENET",  
             "address2": "",
             "address3": "",
             "city": "La Paz",  
             "easLocationCode": "",
-            "email": contact_data.get("email", ""), 
+            "email": "", 
             "homePhone": "",
-            "mobilePhone": mobile,  
+            "mobilePhone": "",  
             "note": "",
             "state": "La Paz",  
             "workPhone": "",
@@ -125,9 +128,9 @@ def build_customer_data(id_user, contact_data, id_plan):
                 "effectiveDt": effective_dt,  
                 "expireDt": expire_dt,  
                 "serviceMenu": {
-                    "serviceMenuId": service_menu_id  
+                    "serviceMenuId": "6212"  
                 }
-            },
+            }
         ]
     }
 
