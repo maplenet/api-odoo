@@ -83,18 +83,33 @@ router = APIRouter(prefix="/users", tags=["users"])
 @router.post("/create")
 async def create_user(request: Request):
     try:
-        # Obtener los datos del cuerpo de la solicitud
         body = await request.json()
-        name = body.get("name")
+        first_name = body.get("first_name")
+        last_name = body.get("last_name")
         email = body.get("email")
         mobile = body.get("mobile")
+        password = body.get("password")
+        password2 = body.get("verify_password")
 
-        # Validar que todos los campos requeridos estén presentes
-        if not all([name, email, mobile]):
-            raise HTTPException(status_code=400, detail="Todos los campos son obligatorios.")
+        if not first_name:
+            raise HTTPException(status_code=400, detail="The 'first_name' field is required.")
+        if not last_name:
+            raise HTTPException(status_code=400, detail="The 'last_name' field is required.")
+        if not email:
+            raise HTTPException(status_code=400, detail="The 'email' field is required.")
+        if not mobile:
+            raise HTTPException(status_code=400, detail="The 'mobile' field is required.")
+        if not password:
+            raise HTTPException(status_code=400, detail="The 'password' field is required.")
+        if not password2:
+            raise HTTPException(status_code=400, detail="The 'verify_password' field is required.")
+
+        if password != password2:
+            raise HTTPException(status_code=400, detail="The passwords do not match.")
+
+        sqlite_conn = get_sqlite_connection()
 
         # Verificar el correo en la tabla de verification_codes
-        sqlite_conn = get_sqlite_connection()
         cursor = sqlite_conn.cursor()
         cursor.execute("SELECT * FROM verification_codes WHERE email = ? ORDER BY id DESC LIMIT 1", (email,))
         verification_record = cursor.fetchone()
@@ -492,7 +507,7 @@ async def update_user(request: Request):
         customer_data = build_customer_data(id_user, updated_contact, id_plan)
 
         # Llamar a la API de creación de clientes en Pontis
-        # create_customer_response = await create_customer_in_pontis(api_token, customer_data)
+        create_customer_response = await create_customer_in_pontis(api_token, customer_data)
         # -------------------------------------------------------------------------------------------
 
        
