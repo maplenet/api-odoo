@@ -58,9 +58,6 @@ def build_customer_data(id_user, contact_data, id_plan):
     effective_dt = datetime.now().strftime("%d/%m/%Y")
     expire_dt = (datetime.now() + timedelta(days=30)).strftime("%d/%m/%Y")
 
-    print(f"effective_dt: {effective_dt}")
-    print(f"expire_dt: {expire_dt}")
-
     # Construir el cuerpo de la solicitud
     customer_data = {
         "customer": {

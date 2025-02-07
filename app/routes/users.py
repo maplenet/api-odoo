@@ -8,78 +8,6 @@ from app.services.odoo_service import execute_odoo_method
 
 router = APIRouter(prefix="/users", tags=["users"])
 
-# @router.post("/create")
-# async def create_user(request: Request):
-#     try:
-#         # Obtener los datos del cuerpo de la solicitud
-#         body = await request.json()
-#         name = body.get("name")
-#         email = body.get("email")
-#         mobile = body.get("mobile")
-
-#         # Validar que todos los campos requeridos estén presentes
-#         if not all([name, email, mobile]):
-#             raise HTTPException(status_code=400, detail="Todos los campos son obligatorios.")
-
-#         # Verificar el correo en la tabla de verification_codes
-#         sqlite_conn = get_sqlite_connection()
-#         cursor = sqlite_conn.cursor()
-#         cursor.execute("SELECT * FROM verification_codes WHERE email = ? ORDER BY id DESC LIMIT 1", (email,))
-#         verification_record = cursor.fetchone()
-
-#         if not verification_record:
-#             raise HTTPException(status_code=400, detail="El correo no ha sido registrado para verificación.")
-
-#         # Verificar el estado del registro
-#         status = verification_record[2]  # Índice del estado en la tabla
-#         if status == 0:
-#             raise HTTPException(status_code=400, detail="El correo no ha sido verificado.")
-
-
-#         # Obtener la conexión a Odoo
-#         odoo_conn = get_odoo_connection()
-
-#         # Verificar que el correo no esté registrado en Odoo
-#         existing_user = odoo_conn['models'].execute_kw(
-#             odoo_conn['db'], odoo_conn['uid'], odoo_conn['password'],
-#             'res.users', 'search_count', [[('login', '=', email)]]
-#         )
-#         if existing_user:
-#             raise HTTPException(status_code=400, detail="El correo ya está registrado en el sistema.")
-
-#         # Obtener el res_id del grupo "Portal"
-#         group_portal = odoo_conn['models'].execute_kw(
-#             odoo_conn['db'], odoo_conn['uid'], odoo_conn['password'],
-#             'ir.model.data', 'search_read',
-#             [[('model', '=', 'res.groups'), ('module', '=', 'base'), ('name', '=', 'group_portal')]],
-#             {'fields': ['res_id'], 'limit': 1}
-#         )
-#         if not group_portal:
-#             raise HTTPException(status_code=500, detail="No se encontró el grupo Portal en Odoo.")
-#         group_portal_id = group_portal[0]['res_id']
-
-#         # Crear el usuario en Odoo
-#         user_id = odoo_conn['models'].execute_kw(
-#             odoo_conn['db'], odoo_conn['uid'], odoo_conn['password'],
-#             'res.users', 'create', [{
-#                 'login': email,
-#                 'name': name,
-#                 'email': email,
-#                 'mobile': mobile,
-#                 'lang': 'es_MX',  # Establecer el idioma a español de México
-#                 'groups_id': [(6, 0, [group_portal_id])]  # Asignar grupo Portal
-#             }]
-#         )
-
-#         return {"detail": "Proceso exitoso.", "id": user_id}
-
-#     except HTTPException as http_error:
-#         raise http_error
-#     except Exception as e:
-#         raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
-#     finally:
-#         sqlite_conn.close()
-
 @router.post("/create")
 async def create_user(request: Request):
     try:
@@ -215,7 +143,6 @@ async def update_password(request: Request):
 
 @router.get("/get/{user_id}")
 async def get_user_with_service(user_id: int, token=Depends(verify_token)):
-    print("user_id", user_id)
     conn = get_odoo_connection()
     try:
         # Obtener información del usuario
