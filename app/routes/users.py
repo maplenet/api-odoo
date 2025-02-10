@@ -311,10 +311,24 @@ async def update_user(request: Request):
         if not product_data:
             raise HTTPException(status_code=404, detail="El producto no existe.")
         
-        # Verificamos que el contacto exista
-        user = execute_odoo_method(conn, 'res.partner', 'read', [[id_user]])
+        # Buscar el usuario por su ID
+        user = execute_odoo_method(conn, 'res.users', 'read', [[id_user], ['partner_id']])
         if not user:
-            raise HTTPException(status_code=404, detail="El contacto no existe.")
+            raise HTTPException(status_code=404, detail="El usuario no existe.")
+        
+        print("usuario",user)
+
+        # Buscar el contacto asociado al usuario
+        contact = execute_odoo_method(conn, 'res.partner', 'read', [[user[0]['partner_id'][0]]])
+        if not contact:
+            raise HTTPException(status_code=404, detail="El contacto asociado al usuario no existe.")
+        
+        print("contacto",contact)
+        
+        # Obtener el ID del contacto asociado al usuario
+        partner_id = contact[0]['id']
+
+        print("partner_id",partner_id)
         
         if type_doc != "1":
             l10n_bo_extension = ""
@@ -324,11 +338,11 @@ async def update_user(request: Request):
                 
         # Actualizar los campos del contacto ligado al usuario
         success = execute_odoo_method(
-            conn, 'res.partner', 'write', [[id_user], {
+            conn, 'res.partner', 'write', [[partner_id], {
                 "company_registry": company_registry,
                 "vat": num_doc,
                 "l10n_bo_extension": l10n_bo_extension if type_doc == 4 else '',
-                "l10n_latam_identification_type_id": type_doc,
+                # "l10n_latam_identification_type_id": type_doc,
                 'l10n_bo_business_name': legal_Name,
             }]
         )
@@ -357,7 +371,7 @@ async def update_user(request: Request):
 
         # Crear el objeto para la factura
         data_to_create_invoice = {
-            'partner_id': id_user,
+            'partner_id': partner_id,
             'move_type': 'out_invoice',  # Tipo de factura (out_invoice para factura de cliente)
             "currency_id": 63,  # ID de la moneda (BOB)
             'vr_nit_ci': num_doc,  # NIT o CI del contacto
@@ -426,24 +440,24 @@ async def update_user(request: Request):
         # ------------------------------------ CONEXIÓN A PONTIS ------------------------------------
 
         # Obtene datos de contacto actualizados
-        updated_contact = execute_odoo_method(conn, 'res.partner', 'read', [[id_user]])[0]
+        # updated_contact = execute_odoo_method(conn, 'res.partner', 'read', [[id_user]])[0]
 
-        # Llamar a la API externa para autenticarse
-        login_response = await login_to_external_api()
-        api_token = login_response.get("token")  # Obtener el token de autenticación
+        # # Llamar a la API externa para autenticarse
+        # login_response = await login_to_external_api()
+        # api_token = login_response.get("token")  # Obtener el token de autenticación
 
-        # Construir el cuerpo de la solicitud para crear el cliente en Pontis
-        customer_data = build_customer_data(id_user, updated_contact, id_plan)
+        # # Construir el cuerpo de la solicitud para crear el cliente en Pontis
+        # customer_data = build_customer_data(id_user, updated_contact, id_plan)
 
-        # Llamar a la API de creación de clientes en Pontis
-        create_customer_response = await create_customer_in_pontis(api_token, customer_data)
-        # -------------------------------------------------------------------------------------------
+        # # Llamar a la API de creación de clientes en Pontis
+        # create_customer_response = await create_customer_in_pontis(api_token, customer_data)
+        # # -------------------------------------------------------------------------------------------
 
        
         return {"detail": "Factura creada y pagada correctamente", 
                 "invoice_id": invoice_id, 
                 "payment_id": payment_register_id,
-                "res_pontis": create_customer_response
+                # "res_pontis": create_customer_response
                 }
 
     except HTTPException as http_error:

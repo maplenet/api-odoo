@@ -64,7 +64,7 @@ def build_customer_data(id_user, contact_data, id_plan):
             "autoProvCountStationary": "1",
             "autoProvisionCount": "0",
             "autoProvisionCountMobile": "2",
-            "customerId": "MAP006", 
+            "customerId": "MAP0"+id_user, 
             "favoritesEnabled": "Y",
             "firstName": "", 
             "hasVod": "Y",
@@ -125,7 +125,7 @@ def build_customer_data(id_user, contact_data, id_plan):
                 "effectiveDt": effective_dt,  
                 "expireDt": expire_dt,  
                 "serviceMenu": {
-                    "serviceMenuId": "6212"  
+                    "serviceMenuId": service_menu_id 
                 }
             }
         ]
