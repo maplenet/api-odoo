@@ -439,19 +439,23 @@ async def update_user(request: Request):
         updated_contact = execute_odoo_method(conn, 'res.partner', 'read', [[partner_id]])
 
 
+        # logearse en la API de Pontis
+        await login_to_external_api()
+
+
 
         # Construir el cuerpo de la solicitud para crear el cliente en Pontis
         customer_data = build_customer_data(id_user, updated_contact, id_plan)
 
         # # Llamar a la API de creación de clientes en Pontis
-        # create_customer_response = await create_customer_in_pontis(api_token, customer_data)
+        create_customer_response = await create_customer_in_pontis(customer_data)
         # # -------------------------------------------------------------------------------------------
 
        
         return {"detail": "Factura creada y pagada correctamente", 
                 "invoice_id": invoice_id, 
                 "payment_id": payment_register_id,
-                # "res_pontis": create_customer_response
+                "res_pontis": create_customer_response
                 }
 
     except HTTPException as http_error:

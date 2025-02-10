@@ -136,7 +136,7 @@ def build_customer_data(id_user, contact_data, id_plan):
     return customer_data
 
 
-async def create_customer_in_pontis(api_token, customer_data):
+async def create_customer_in_pontis(customer_data):
     """
     Realiza una solicitud HTTP POST a la API de creación de clientes en Pontis.
 
@@ -146,7 +146,6 @@ async def create_customer_in_pontis(api_token, customer_data):
     """
     url = "http://18.117.185.30:3000/api/customers/create"
     headers = {
-        "Authorization": f"Bearer {api_token}",  # Usar el token de autenticación
         "Content-Type": "application/json"
     }
 
