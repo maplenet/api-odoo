@@ -448,14 +448,14 @@ async def update_user(request: Request):
         customer_data = build_customer_data(id_user, updated_contact, id_plan)
 
         # # Llamar a la API de creación de clientes en Pontis
-        create_customer_response = await create_customer_in_pontis(customer_data)
+        # create_customer_response = await create_customer_in_pontis(customer_data)
         # # -------------------------------------------------------------------------------------------
 
        
         return {"detail": "Factura creada y pagada correctamente", 
                 "invoice_id": invoice_id, 
                 "payment_id": payment_register_id,
-                "res_pontis": create_customer_response
+                # "res_pontis": create_customer_response
                 }
 
     except HTTPException as http_error:
