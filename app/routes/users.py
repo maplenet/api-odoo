@@ -5,80 +5,24 @@ from app.core.email_utils import send_email
 from datetime import datetime, timedelta, timezone
 from app.services.api_service import build_customer_data, create_customer_in_pontis, login_to_external_api
 from app.services.odoo_service import execute_odoo_method
+import re
+
 
 router = APIRouter(prefix="/users", tags=["users"])
 
-# @router.post("/create")
-# async def create_user(request: Request):
-#     try:
-#         # Obtener los datos del cuerpo de la solicitud
-#         body = await request.json()
-#         name = body.get("name")
-#         email = body.get("email")
-#         mobile = body.get("mobile")
 
-#         # Validar que todos los campos requeridos estén presentes
-#         if not all([name, email, mobile]):
-#             raise HTTPException(status_code=400, detail="Todos los campos son obligatorios.")
+def _is_valid_password(password: str) -> bool:
+    """
+    Verifica que la contraseña cumpla con los siguientes requisitos:
+    - Mínimo 8 caracteres
+    - Al menos 1 mayúscula
+    - Al menos 1 minúscula
+    - Al menos 1 número
+    - Al menos 1 carácter especial (@, #, $, %, etc.)
+    """
+    pattern = r"^(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$"
+    return bool(re.match(pattern, password))
 
-#         # Verificar el correo en la tabla de verification_codes
-#         sqlite_conn = get_sqlite_connection()
-#         cursor = sqlite_conn.cursor()
-#         cursor.execute("SELECT * FROM verification_codes WHERE email = ? ORDER BY id DESC LIMIT 1", (email,))
-#         verification_record = cursor.fetchone()
-
-#         if not verification_record:
-#             raise HTTPException(status_code=400, detail="El correo no ha sido registrado para verificación.")
-
-#         # Verificar el estado del registro
-#         status = verification_record[2]  # Índice del estado en la tabla
-#         if status == 0:
-#             raise HTTPException(status_code=400, detail="El correo no ha sido verificado.")
-
-
-#         # Obtener la conexión a Odoo
-#         odoo_conn = get_odoo_connection()
-
-#         # Verificar que el correo no esté registrado en Odoo
-#         existing_user = odoo_conn['models'].execute_kw(
-#             odoo_conn['db'], odoo_conn['uid'], odoo_conn['password'],
-#             'res.users', 'search_count', [[('login', '=', email)]]
-#         )
-#         if existing_user:
-#             raise HTTPException(status_code=400, detail="El correo ya está registrado en el sistema.")
-
-#         # Obtener el res_id del grupo "Portal"
-#         group_portal = odoo_conn['models'].execute_kw(
-#             odoo_conn['db'], odoo_conn['uid'], odoo_conn['password'],
-#             'ir.model.data', 'search_read',
-#             [[('model', '=', 'res.groups'), ('module', '=', 'base'), ('name', '=', 'group_portal')]],
-#             {'fields': ['res_id'], 'limit': 1}
-#         )
-#         if not group_portal:
-#             raise HTTPException(status_code=500, detail="No se encontró el grupo Portal en Odoo.")
-#         group_portal_id = group_portal[0]['res_id']
-
-#         # Crear el usuario en Odoo
-#         user_id = odoo_conn['models'].execute_kw(
-#             odoo_conn['db'], odoo_conn['uid'], odoo_conn['password'],
-#             'res.users', 'create', [{
-#                 'login': email,
-#                 'name': name,
-#                 'email': email,
-#                 'mobile': mobile,
-#                 'lang': 'es_MX',  # Establecer el idioma a español de México
-#                 'groups_id': [(6, 0, [group_portal_id])]  # Asignar grupo Portal
-#             }]
-#         )
-
-#         return {"detail": "Proceso exitoso.", "id": user_id}
-
-#     except HTTPException as http_error:
-#         raise http_error
-#     except Exception as e:
-#         raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
-#     finally:
-#         sqlite_conn.close()
 
 @router.post("/create")
 async def create_user(request: Request):
@@ -104,8 +48,19 @@ async def create_user(request: Request):
         if not password2:
             raise HTTPException(status_code=400, detail="The 'verify_password' field is required.")
 
+        # Cortamos los espacios en blanco al principio y al final de los campos first_name, last_name, email y mobile y si como resultado queda vacío, lanzamos un error
+        if first_name.strip() == "" or last_name.strip() == "" or email.strip() == "" or mobile.strip() == "":
+            raise HTTPException(status_code=400, detail="The fields cannot be empty.")
+
         if password != password2:
             raise HTTPException(status_code=400, detail="The passwords do not match.")
+
+        # Verificamos que la contraseña tenga al menos 8 caracteres 1 mayúscula, 1 minúscula, 1 número y 1 caracter especial
+        if not _is_valid_password(password):
+            raise HTTPException(
+                status_code=400, 
+                detail="The password must have at least 8 characters, including 1 uppercase, 1 lowercase, 1 number, and 1 special character."
+            )
 
         sqlite_conn = get_sqlite_connection()
 
@@ -115,12 +70,12 @@ async def create_user(request: Request):
         verification_record = cursor.fetchone()
 
         if not verification_record:
-            raise HTTPException(status_code=400, detail="El correo no ha sido registrado para verificación.")
+            raise HTTPException(status_code=400, detail="The email has not been registered for verification.")
 
         # Verificar el estado del registro
         status = verification_record[2]  # Índice del estado en la tabla
         if status == 0:
-            raise HTTPException(status_code=400, detail="El correo no ha sido verificado.")
+            raise HTTPException(status_code=400, detail="The email has not been verified.")
 
         # Obtener la conexión a Odoo
         odoo_conn = get_odoo_connection()
@@ -128,7 +83,7 @@ async def create_user(request: Request):
         # Verificar que el correo no esté registrado en Odoo
         existing_user = execute_odoo_method(odoo_conn, 'res.users', 'search_count', [[('login', '=', email)]])
         if existing_user:
-            raise HTTPException(status_code=400, detail="El correo ya está registrado en el sistema.")
+            raise HTTPException(status_code=400, detail="The email is already registered in the system.")
 
         # Obtener el res_id del grupo "Portal"
         group_portal = execute_odoo_method(
@@ -137,27 +92,29 @@ async def create_user(request: Request):
             {'fields': ['res_id'], 'limit': 1}
         )
         if not group_portal:
-            raise HTTPException(status_code=500, detail="No se encontró el grupo Portal en Odoo.")
+            raise HTTPException(status_code=500, detail="The Portal group was not found in Odoo.")
         group_portal_id = group_portal[0]['res_id']
 
         # Crear el usuario en Odoo
         user_id = execute_odoo_method(
             odoo_conn, 'res.users', 'create', [{
                 'login': email,
-                'name': name,
+                'name': first_name + " " + last_name,
                 'email': email,
                 'mobile': mobile,
+                'password': password,
                 'lang': 'es_MX',  # Establecer el idioma a español de México
                 'groups_id': [(6, 0, [group_portal_id])]  # Asignar grupo Portal
-            }]
+            }],
+            context={'no_reset_password': True}
         )
 
-        return {"detail": "Proceso exitoso.", "id": user_id}
+        return {"detail": "Successful process", "id": user_id}
 
     except HTTPException as http_error:
         raise http_error
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal error:: {str(e)}")
     finally:
         sqlite_conn.close()
 
