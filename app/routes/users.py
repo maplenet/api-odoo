@@ -316,19 +316,16 @@ async def update_user(request: Request):
         if not user:
             raise HTTPException(status_code=404, detail="El usuario no existe.")
         
-        print("usuario",user)
 
         # Buscar el contacto asociado al usuario
         contact = execute_odoo_method(conn, 'res.partner', 'read', [[user[0]['partner_id'][0]]])
         if not contact:
             raise HTTPException(status_code=404, detail="El contacto asociado al usuario no existe.")
         
-        print("contacto",contact)
         
         # Obtener el ID del contacto asociado al usuario
         partner_id = contact[0]['id']
 
-        print("partner_id",partner_id)
         
         if type_doc != "1":
             l10n_bo_extension = ""
@@ -436,18 +433,15 @@ async def update_user(request: Request):
         execute_odoo_method(conn, 'account.payment.register', 'action_create_payments', [[payment_register_id[0]]])
 
 
-
         # ------------------------------------ CONEXIÓN A PONTIS ------------------------------------
 
         # Obtene datos de contacto actualizados
-        # updated_contact = execute_odoo_method(conn, 'res.partner', 'read', [[id_user]])[0]
+        updated_contact = execute_odoo_method(conn, 'res.partner', 'read', [[partner_id]])
 
-        # # Llamar a la API externa para autenticarse
-        # login_response = await login_to_external_api()
-        # api_token = login_response.get("token")  # Obtener el token de autenticación
 
-        # # Construir el cuerpo de la solicitud para crear el cliente en Pontis
-        # customer_data = build_customer_data(id_user, updated_contact, id_plan)
+
+        # Construir el cuerpo de la solicitud para crear el cliente en Pontis
+        customer_data = build_customer_data(id_user, updated_contact, id_plan)
 
         # # Llamar a la API de creación de clientes en Pontis
         # create_customer_response = await create_customer_in_pontis(api_token, customer_data)

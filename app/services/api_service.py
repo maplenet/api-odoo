@@ -32,8 +32,10 @@ async def login_to_external_api():
    
 def build_customer_data(id_user, contact_data, id_plan):
 
+    contact = contact_data[0]
+
     # Obtener los últimos 4 dígitos del móvil
-    mobile = contact_data.get("mobile", "")
+    mobile = contact.get("mobile", "")
     pin = mobile[-4:] if mobile else "1234"
 
     # Obtener el serviceMenuId según el id_plan
@@ -64,7 +66,7 @@ def build_customer_data(id_user, contact_data, id_plan):
             "autoProvCountStationary": "1",
             "autoProvisionCount": "0",
             "autoProvisionCountMobile": "2",
-            "customerId": "MAP0"+id_user, 
+            "customerId": "MAP0"+str(id_user), 
             "favoritesEnabled": "Y",
             "firstName": "", 
             "hasVod": "Y",
