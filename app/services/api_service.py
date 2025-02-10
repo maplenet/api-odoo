@@ -63,9 +63,9 @@ def build_customer_data(id_user, contact_data, id_plan):
     # Construir el cuerpo de la solicitud
     customer_data = {
         "customer": {
-            "autoProvCountStationary": "1",
+            "autoProvCountStationary": "4",
             "autoProvisionCount": "0",
-            "autoProvisionCountMobile": "2",
+            "autoProvisionCountMobile": "8",
             "customerId": "MAP0"+str(id_user), 
             "favoritesEnabled": "Y",
             "firstName": "", 
@@ -84,7 +84,7 @@ def build_customer_data(id_user, contact_data, id_plan):
             "secondaryAudioLanguage": "eng",
             "primarySubtitleLanguage": "spa",
             "secondarySubtitleLanguage": "eng",
-            "login": "MAP006", 
+            "login": "MAP0"+str(id_user), 
             "password": "abc123" 
         },
         "customerInfo": {
