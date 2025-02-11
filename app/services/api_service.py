@@ -36,101 +36,115 @@ def build_customer_data(id_user, contact_data, id_plan):
 
     # Obtener los últimos 4 dígitos del móvil
     mobile = contact.get("mobile", "")
-    pin = mobile[-4:] if mobile else "1234"
-
-    # Obtener el serviceMenuId según el id_plan
-    service_menu_id_map = {
-        999999997: "6213",  # M+ Básico servicio
-        999999998: "6214",  # M+ mobile
-        999999999: "6215",  # M+ estacionario
-        11: "6212",  # M+ Básico paquete
-        13: "6217",  # M+ Premium paquete
-    }
-
-    # Obtener el serviceMenuId según el id_plan
-    service_menu_id = service_menu_id_map.get(id_plan)
-    
-    # EN caso de serviceMenuId no encontrado poner por defecto el paquete basico
-    if not service_menu_id:
-        service_menu_id = "6213"
-
-    # service_menu_id = service_menu_id_map.get(id_plan, "6213")  # Por defecto, M+ Básico
+    pin = mobile[-4:] if mobile and len(mobile) >= 4 else "1234"
 
     # Fechas
     effective_dt = datetime.now().strftime("%d/%m/%Y")
     expire_dt = (datetime.now() + timedelta(days=30)).strftime("%d/%m/%Y")
 
-    # Construir el cuerpo de la solicitud
+    # Construcción dinámica de la lista de servicios
+    subscribe_service_list = []
+
+    # Servicios obligatorios
+    subscribe_service_list.extend([
+        {
+            "effectiveDt": effective_dt,
+            "expireDt": "",
+            "serviceMenu": {"serviceMenuId": "6213"}  
+        },
+        {
+            "effectiveDt": effective_dt,
+            "expireDt": "",
+            "serviceMenu": {"serviceMenuId": "6214"}  
+        },
+        {
+            "effectiveDt": effective_dt,
+            "expireDt": "",
+            "serviceMenu": {"serviceMenuId": "6215"} 
+        }
+    ])
+
+    if id_plan == 11:
+        subscribe_service_list.append({
+            "effectiveDt": effective_dt,
+            "expireDt": expire_dt,
+            "serviceMenu": {"serviceMenuId": "6212"} 
+        })
+
+    if id_plan == 13:
+        subscribe_service_list.extend([
+            {
+                "effectiveDt": effective_dt,
+                "expireDt": expire_dt,
+                "serviceMenu": {"serviceMenuId": "6217"}  
+            },
+            {
+                "effectiveDt": effective_dt,
+                "expireDt": expire_dt,
+                "serviceMenu": {"serviceMenuId": "6212"} 
+            }
+        ])
+
+    if id_plan == 19:
+        subscribe_service_list.extend([
+            {
+                "effectiveDt": effective_dt,
+                "expireDt": expire_dt,
+                "serviceMenu": {"serviceMenuId": "6293"}  
+            },
+            {
+                "effectiveDt": effective_dt,
+                "expireDt": expire_dt,
+                "serviceMenu": {"serviceMenuId": "6212"}  
+            },
+            {
+                "effectiveDt": effective_dt,
+                "expireDt": expire_dt,
+                "serviceMenu": {"serviceMenuId": "6217"}  
+            }
+        ])
+
     customer_data = {
         "customer": {
             "autoProvCountStationary": "4",
             "autoProvisionCount": "0",
             "autoProvisionCountMobile": "8",
-            "customerId": "MAP0"+str(id_user), 
+            "customerId": "MAP0"+str(id_user),
             "favoritesEnabled": "Y",
-            "firstName": "", 
+            "firstName": contact.get("name", ""),
             "hasVod": "Y",
-            "lastName": "maplenet",  
+            "lastName": "maplenet",
             "localizationId": "71",
-            "pin": pin, 
+            "pin": pin,
             "status": "A",
             "displayTimeout": "10",
             "multicastTunein": "N",
             "multicastenabled": "N"
         },
         "customerAccount": {
-            "effectiveDt": effective_dt, 
-            "expireDt": "",  
+            "effectiveDt": effective_dt,
+            "expireDt": "",
             "secondaryAudioLanguage": "eng",
             "primarySubtitleLanguage": "spa",
             "secondarySubtitleLanguage": "eng",
-            "login": "MAP0"+str(id_user), 
-            "password": "abc123" 
+            "login": "MAP0"+str(id_user),
+            "password": "abc123"
         },
         "customerInfo": {
-            "address1": "CALLE MAPLENET",  
+            "address1": "CALLE MAPLENET",
             "address2": "",
             "address3": "",
-            "city": "La Paz",  
+            "city": "La Paz",
             "easLocationCode": "",
-            "email": "", 
+            "email": contact.get("email", ""),
             "homePhone": "",
-            "mobilePhone": "",  
+            "mobilePhone": mobile,
             "note": "",
-            "state": "La Paz",  
+            "state": "La Paz",
             "workPhone": "",
-            "zipcode": "0000"  
+            "zipcode": "0000"
         },
-        "subscribeService": [
-            {
-                "effectiveDt": effective_dt,  
-                "expireDt": "",  
-                "serviceMenu": {
-                    "serviceMenuId": "6213"  
-                }
-            },
-            {
-                "effectiveDt": effective_dt,  
-                "expireDt": "",  
-                "serviceMenu": {
-                    "serviceMenuId": "6214"  
-                }
-            },
-            {
-                "effectiveDt": effective_dt,  
-                "expireDt": "",  
-                "serviceMenu": {
-                    "serviceMenuId": "6215"  
-                }
-            },
-            {
-                "effectiveDt": effective_dt,  
-                "expireDt": expire_dt,  
-                "serviceMenu": {
-                    "serviceMenuId": service_menu_id 
-                }
-            }
-        ]
+        "subscribeService": subscribe_service_list
     }
 
     return customer_data

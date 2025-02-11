@@ -397,16 +397,7 @@ async def update_user(request: Request):
         invoice_info = execute_odoo_method(conn, 'account.move', 'read', [[invoice_id], ['amount_total', 'currency_id', 'partner_id', 'name']])[0]
 
         payment_data = {
-            # 'payment_type': 'inbound',  # Tipo de pago (entrante)
-            # 'journal_id': 7,  # Diario de pago (ajusta este valor según tu configuración)
-            # 'payment_method_line_id': 3,  # Método de pago (ajusta este valor según tu configuración)
-            # 'partner_bank_id': 1,  # Cuenta bancaria receptora (ajusta este valor según tu configuración)
-            # 'amount': invoice_data['amount_total'],  # Monto total de la factura
-            # 'highest_name': invoice_data['name'],  # Nombre de la factura
-            # 'date': datetime.now().strftime("%Y-%m-%d"),  # Fecha de pago
-            # 'currency_id': invoice_data['currency_id'][0],  # Moneda
-            # 'partner_id': invoice_data['partner_id'][0],  # ID del contacto
-
+  
             'payment_type': 'inbound',
             'communication': invoice_info['name'],
             'payment_date': datetime.now().strftime("%Y-%m-%d"),
@@ -442,20 +433,18 @@ async def update_user(request: Request):
         # logearse en la API de Pontis
         await login_to_external_api()
 
-
-
         # Construir el cuerpo de la solicitud para crear el cliente en Pontis
         customer_data = build_customer_data(id_user, updated_contact, id_plan)
 
         # # Llamar a la API de creación de clientes en Pontis
-        # create_customer_response = await create_customer_in_pontis(customer_data)
+        create_customer_response = await create_customer_in_pontis(customer_data)
         # # -------------------------------------------------------------------------------------------
 
        
         return {"detail": "Factura creada y pagada correctamente", 
                 "invoice_id": invoice_id, 
                 "payment_id": payment_register_id,
-                # "res_pontis": create_customer_response
+                "res_pontis": create_customer_response
                 }
 
     except HTTPException as http_error:
