@@ -23,7 +23,10 @@ def create_tables():
         first_name TEXT NOT NULL,
         last_name TEXT NOT NULL,
         email TEXT NOT NULL,
+        mobile TEXT NOT NULL,
         password TEXT NOT NULL,
+        street TEXT,
+        ci TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     """)

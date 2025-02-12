@@ -5,7 +5,7 @@ from app.core.database import get_odoo_connection, get_sqlite_connection
 from datetime import datetime, timedelta, timezone
 from app.services.api_service import build_customer_data, create_customer_in_pontis, login_to_external_api
 from app.services.odoo_service import execute_odoo_method
-from app.services.sqlite_service import get_decrypted_password, insert_user_record, update_user_password
+from app.services.sqlite_service import get_decrypted_password, get_user_record, insert_user_record, update_user_password
 
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -94,7 +94,7 @@ async def create_user(request: Request):
         )
 
         # Insertar el registro del usuario en SQLite (la contraseña se encripta automáticamente)
-        insert_user_record(user_id, first_name, last_name, email, password)
+        insert_user_record(user_id, first_name, last_name, email, mobile, password)
 
         return {"detail": "Successful process", "id": user_id}
 
@@ -168,30 +168,43 @@ async def change_password(request: Request, token_payload: dict = Depends(verify
 
 
 @router.get("/get/{user_id}")
-async def get_user_with_service(user_id: int, token=Depends(verify_token)):
-    conn = get_odoo_connection()
+async def get_user_with_service(user_id: int, token_payload: dict = Depends(verify_token)):
+    """
+    Obtiene la información del usuario junto con los datos de su servicio.
+    Se extrae el 'user_id' del token y se compara con el parámetro.
+    Luego se obtiene la información de servicio desde Odoo y se combinan
+    con los datos personales obtenidos desde SQLite.
+    """
+    # Verificar que el user_id en el token coincida con el parámetro
+    token_user_id = token_payload.get("user_id")
+    if int(user_id) != int(token_user_id):
+        raise HTTPException(status_code=403, detail="No está autorizado para consultar otro usuario.")
+
+    # Obtener datos del usuario desde SQLite
     try:
-        # Obtener información del usuario
-        user_data = conn['models'].execute_kw(
-            conn['db'], conn['uid'], conn['password'],
+        user_record = get_user_record(user_id)
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    
+    # Conectar a Odoo para obtener información adicional (por ejemplo, servicio)
+    odoo_conn = get_odoo_connection()
+    try:
+        # Obtener información del usuario desde Odoo
+        user_data = odoo_conn['models'].execute_kw(
+            odoo_conn['db'], odoo_conn['uid'], odoo_conn['password'],
             'res.users', 'read', [[user_id]],
             {'fields': ['email', 'name', 'password', 'mobile', 'street', 'partner_id']}
         )
-
         if not user_data:
-            raise HTTPException(status_code=404, detail="Usuario no encontrado.")
-
-        user = user_data[0]
-        partner_id = user.get("partner_id", [None])[0]
-
+            raise HTTPException(status_code=404, detail="Usuario no encontrado en Odoo.")
+        odoo_user = user_data[0]
+        partner_id = odoo_user.get("partner_id", [None])[0]
         if not partner_id:
-            raise HTTPException(status_code=404, detail="El usuario no tiene un contacto asociado.")
+            raise HTTPException(status_code=404, detail="El usuario no tiene un contacto asociado en Odoo.")
 
-        today = datetime.now(timezone.utc)  # Convertimos a UTC
-
-        # Obtener la última factura válida
-        invoice = conn['models'].execute_kw(
-            conn['db'], conn['uid'], conn['password'],
+        # Obtener la última factura válida (servicio)
+        invoice = odoo_conn['models'].execute_kw(
+            odoo_conn['db'], odoo_conn['uid'], odoo_conn['password'],
             'account.move', 'search_read',
             [[
                 ['partner_id', '=', partner_id],
@@ -204,70 +217,53 @@ async def get_user_with_service(user_id: int, token=Depends(verify_token)):
                 'limit': 1
             }
         )
-
-        if not invoice:
-            return {
-                "user": {
-                    "id": user["id"],
-                    "email": user["email"],
-                    "name": user["name"],
-                    "password": user["password"],
-                    "mobile": user["mobile"],
-                    "street": user["street"] or ""
-                },
-                "service": {}
+        service = {}
+        if invoice:
+            invoice = invoice[0]
+            # Obtener el producto asociado a la factura
+            invoice_line = odoo_conn['models'].execute_kw(
+                odoo_conn['db'], odoo_conn['uid'], odoo_conn['password'],
+                'account.move.line', 'read', [invoice['invoice_line_ids']],
+                {'fields': ['product_id']}
+            )
+            product_id = invoice_line[0]['product_id'][0] if invoice_line and invoice_line[0].get('product_id') else None
+            # Obtener detalles del producto
+            product_data = odoo_conn['models'].execute_kw(
+                odoo_conn['db'], odoo_conn['uid'], odoo_conn['password'],
+                'product.product', 'read', [[product_id]],
+                {'fields': ['name']}
+            ) if product_id else None
+            # Calcular fecha de expiración y estado del servicio
+            invoice_date = datetime.strptime(invoice['invoice_date'], "%Y-%m-%d").replace(tzinfo=timezone.utc)
+            date_expiration = invoice_date + timedelta(days=30)
+            today = datetime.now(timezone.utc)
+            status = invoice_date <= today <= date_expiration
+            service = {
+                "id": invoice["id"],
+                "id_service": product_id,
+                "name": product_data[0]["name"] if product_data else "Desconocido",
+                "price_paid": invoice["amount_total"],
+                "date_order": invoice["invoice_date"],
+                "date_expiration": date_expiration.strftime("%Y-%m-%d"),
+                "status": status
             }
-
-        invoice = invoice[0]
-
-        # Obtener el producto asociado a la factura
-        invoice_line = conn['models'].execute_kw(
-            conn['db'], conn['uid'], conn['password'],
-            'account.move.line', 'read', [invoice['invoice_line_ids']],
-            {'fields': ['product_id']}
-        )
-
-        product_id = invoice_line[0]['product_id'][0] if invoice_line and invoice_line[0]['product_id'] else None
-
-        # Obtener detalles del producto
-        product_data = conn['models'].execute_kw(
-            conn['db'], conn['uid'], conn['password'],
-            'product.product', 'read', [[product_id]],
-            {'fields': ['name']}
-        ) if product_id else None
-
-        # Calcular la fecha de expiración
-        invoice_date = datetime.strptime(invoice['invoice_date'], "%Y-%m-%d").replace(tzinfo=timezone.utc)
-        date_expiration = invoice_date + timedelta(days=30)
-
-        # Calcular el estado del servicio
-        status = invoice_date <= today <= date_expiration
-
-        # Construir el objeto service
-        service = {
-            "id": invoice["id"],
-            "id_service": product_id,
-            "name": product_data[0]["name"] if product_data else "Desconocido",
-            "price_paid": invoice["amount_total"],
-            "date_order": invoice["invoice_date"],
-            "date_expiration": date_expiration.strftime("%Y-%m-%d"),
-            # "date_expiration": date_expiration.strftime("%Y-%m-%d %H:%M:%S"),
-            "status": status
-        }
-
-        return {
+        # Construir la respuesta combinada
+        response_data = {
             "user": {
-                "id": user["id"],
-                "email": user["email"],
-                "name": user["name"],
-                "password": user["password"],
-                "mobile": user["mobile"],
-                "street": user["street"] or ""
+                "id": user_record.get("user_id"),
+                "email": user_record.get("email"),
+                "first_name": user_record.get("first_name"),
+                "last_name": user_record.get("last_name"),
+                "mobile": user_record.get("mobile"),
+                "street": user_record.get("street") or "",
+                "ci": user_record.get("ci") or ""
             },
             "service": service
         }
-    except HTTPException as http_error:
-        raise http_error
+        return response_data
+
+    except HTTPException as http_err:
+        raise http_err
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error interno: {e}")
 
