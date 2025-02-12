@@ -22,7 +22,7 @@ def get_odoo_connection():
 # Conexión a SQLite
 def get_sqlite_connection():
     try:
-        connection = sqlite3.connect("verification_codes.db")
+        connection = sqlite3.connect("verification.db")
         return connection
     except sqlite3.Error as e:
         raise Exception(f"Error al conectar con SQLite: {e}")

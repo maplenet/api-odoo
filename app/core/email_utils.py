@@ -3,7 +3,6 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from app.config import settings
 from fastapi import HTTPException
-# TODO: VOLVER ENDPOINT DE EMAIL
 def send_email(to_email: str, subject: str, body: str):
     try:
         # Conectar al servidor SMTP
