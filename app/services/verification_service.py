@@ -30,12 +30,11 @@ def create_verification_code(email: str):
         """, (email, code))
         conn.commit()
 
-
     # Enviar el código por correo electrónico
     send_email(
         to_email=email,
-        subject="Código de verificación",
-        body=f"Tu código de verificación es: {code}"
+        subject="Código de verificación: " + code,
+        body=code,  # No necesitamos el cuerpo en texto plano
     )
     return code
 

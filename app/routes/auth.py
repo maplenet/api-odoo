@@ -131,7 +131,7 @@ async def verify_email(request: Request):
     contacts = conn['models'].execute_kw(
         conn['db'], conn['uid'], conn['password'],
         'res.partner', 'search_read', [[['email', '=', email]]]
-    )
+    )   
     if contacts:
         raise HTTPException(status_code=400, detail="El correo ya está registrado.")
     
@@ -165,7 +165,7 @@ async def verify_code(request: Request):
 async def forgot_password(request: Request):
     """
     Genera un token de restablecimiento y envía un email con un enlace para recuperar la contraseña.
-    Se responde siempre con un mensaje genérico.
+    Si el correo no existe, se informa de ello (aunque esto puede permitir enumeración de cuentas).
     """
     try:
         body = await request.json()
@@ -179,10 +179,11 @@ async def forgot_password(request: Request):
             conn.row_factory = aiosqlite.Row
             async with conn.execute("SELECT user_id, email FROM users WHERE email = ?", (email,)) as cursor:
                 user = await cursor.fetchone()
-        generic_response = {"detail": "Si existe una cuenta asociada, se han enviado instrucciones al correo."}
+        
+        # Si no se encuentra el usuario, informar al cliente
         if not user:
-            return generic_response
-
+            raise HTTPException(status_code=404, detail="No se encontró una cuenta asociada a ese correo.")
+        
         user_id = user["user_id"]
         # Generar token de restablecimiento (JWT) con expiración corta
         reset_token = create_password_reset_token(user_id)
@@ -199,10 +200,11 @@ async def forgot_password(request: Request):
             body=f"Para restablecer tu contraseña, haz clic en el siguiente enlace: <br><br> <a href='{reset_link}'>PULSA AQUÍ</a>"
         )
 
-        return generic_response
+        return {"detail": "Se han enviado instrucciones al correo."}
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
+
 
 @router.post("/reset_password")
 async def reset_password(request: Request):
