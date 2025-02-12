@@ -2,7 +2,6 @@ from pydantic_settings import BaseSettings
 from pydantic import Field
 
 class Settings(BaseSettings):
-
     # Configuración para Odoo
     ODOO_URL: str
     ODOO_DB: str
@@ -22,6 +21,9 @@ class Settings(BaseSettings):
     EMAIL_SERVER: str = Field(..., env="EMAIL_SERVER")
     EMAIL_TLS: bool = Field(..., env="EMAIL_TLS")
     EMAIL_SSL: bool = Field(..., env="EMAIL_SSL")
+    
+    # variable de encriptación
+    ENCRYPTION_KEY: str = Field(..., env="ENCRYPTION_KEY")
 
     class Config:
         env_file = ".env"

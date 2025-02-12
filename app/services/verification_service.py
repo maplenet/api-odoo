@@ -13,7 +13,7 @@ def get_latest_verification_code(email: str):
         conn.row_factory = sqlite3.Row  # Hacer que SQLite devuelva los resultados como diccionarios
         cursor = conn.cursor()
         cursor.execute("""
-        SELECT * FROM verification_codes
+        SELECT * FROM verification
         WHERE email = ?
         ORDER BY created_at DESC
         LIMIT 1
@@ -25,7 +25,7 @@ def create_verification_code(email: str):
     with get_sqlite_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
-        INSERT INTO verification_codes (email, code, status)
+        INSERT INTO verification (email, code, status)
         VALUES (?, ?, 0)
         """, (email, code))
         conn.commit()
@@ -61,7 +61,7 @@ def verify_code_and_email(email: str, code: str):
 
         # Verificar si el correo existe en la tabla
         cursor.execute("""
-        SELECT * FROM verification_codes
+        SELECT * FROM verification
         WHERE email = ?
         ORDER BY created_at DESC
         LIMIT 1
@@ -81,7 +81,7 @@ def verify_code_and_email(email: str, code: str):
         
         # Actualizar el estado a true (1)
         cursor.execute("""
-        UPDATE verification_codes
+        UPDATE verification
         SET status = 1
         WHERE email = ? AND code = ?
         """, (email, code))

@@ -74,6 +74,6 @@
 │   │   └── python3.11
 │   ├── lib64 -> lib
 │   └── pyvenv.cfg
-└── verification_codes.db
+└── verification.db
 
 17 directories, 60 files
