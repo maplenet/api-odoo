@@ -1,7 +1,15 @@
+import aiosqlite
 from fastapi import APIRouter, HTTPException, Request, Depends, Response
+from jose import jwt, JWTError
+from datetime import datetime, timedelta
+from app.core.security import settings 
+from app.core.email_utils import send_email
 from app.core.email_validation import is_valid_email
-from app.core.security import create_access_token, verify_token, oauth2_scheme, blacklisted_tokens
+from app.core.security import create_access_token, create_password_reset_token, verify_token, oauth2_scheme, blacklisted_tokens
 from app.core.database import get_odoo_connection
+from app.routes.users import _is_valid_password
+from app.services.sqlite_service import update_user_password
+from app.services.token_service import get_token_record, mark_token_as_used, revoke_token, store_token
 from app.services.verification_service import handle_verification_request, verify_code_and_email
 
 router = APIRouter(tags=["authentication"])
@@ -20,41 +28,41 @@ async def login(request: Request, response: Response):
     if not is_valid_email(email):
         raise HTTPException(status_code=400, detail="Correo inválido.")
 
-    # Conectar con Odoo
     try:
+        # Conectar con Odoo
         conn = get_odoo_connection()
-
         if "common" not in conn or "models" not in conn:
             raise HTTPException(status_code=500, detail="Error en la conexión con Odoo.")
 
-         # **Autenticar usuario con Odoo**
+        # Autenticar usuario en Odoo
         user_id = conn["common"].authenticate(conn["db"], email, password, {})
-
         if not user_id:
-            raise HTTPException(status_code=401, detail="Credenciales inválidas.")  # <-- Aquí lanzamos el error 401 correctamente
+            raise HTTPException(status_code=401, detail="Credenciales inválidas.")
 
-        # **Obtener información del usuario desde res.users**
+        # Obtener información del usuario
         users = conn["models"].execute_kw(
             conn["db"], conn["uid"], conn["password"],
-            "res.users", "search_read", [[["id", "=", user_id]]], 
+            "res.users", "search_read", [[["id", "=", user_id]]],
             {"fields": ["id", "name", "login", "email", "partner_id"]}
         )
-
         if not users:
             raise HTTPException(status_code=404, detail="No se encontró el usuario.")
+        user = users[0]
 
-        user = users[0]  # Usuario autenticado
-        # **Generar token**
-        access_token = create_access_token(user["id"], email)
+        # Generar token de acceso
+        access_token = create_access_token(user["id"], user["partner_id"][0])
+        expires_at = (datetime.now() + timedelta(minutes=settings.JWT_EXPIRATION_MINUTES)).isoformat()
 
-    
-        # **Configurar respuesta con cookie**
+        # Almacenar el token en la tabla 'tokens'
+        # (Puedes obtener client_ip y user_agent del request si lo deseas)
+        store_token(access_token, user["id"], "access", expires_at)
+
+        # Configurar respuesta con cookie
         response = JSONResponse(
             content={
-                "user_id": user["id"], 
+                "user_id": user["id"],
                 "partner_id": user["partner_id"][0],
-                # "email": user["email"], 
-                # "access_token": access_token, 
+                "access_token": access_token,
                 "detail": "Proceso exitoso."
             }
         )
@@ -62,57 +70,48 @@ async def login(request: Request, response: Response):
             key="access_token",
             value=access_token,
             httponly=False,
-            secure=False,  
+            secure=False,
             samesite="lax"
         )
 
         return response
 
     except HTTPException as http_err:
-        raise http_err  
-
+        raise http_err
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error interno del servidor: {str(e)}")
 
 
-
-
-# Refrescar el token de acceso
-@router.post("/refresh-token")
-def refresh_token(response: Response, token: str = Depends(oauth2_scheme)):
-    if not token:
-        raise HTTPException(status_code=400, detail="Token de acceso no proporcionado.")
+@router.post("/logout/{id_user}")
+def logout(id_user: int, response: Response, token: str = Depends(oauth2_scheme)):
+    """
+    Cierra la sesión del usuario.
+    Se recibe el 'id_user' por ruta y se compara con el 'user_id' del token.
+    Si el token ya ha sido revocado, se retorna un error.
+    """
+    # Obtener el payload del token
+    payload = verify_token(token)
+    token_user_id = payload.get("user_id")
     
-    if token in blacklisted_tokens:
-        raise HTTPException(status_code=401, detail="Token inválido.")
+    if int(id_user) != int(token_user_id):
+        raise HTTPException(status_code=403, detail="No autorizado para cerrar sesión de otro usuario.")
+    
+    # Obtener el registro del token de la base de datos
+    token_record = get_token_record(token)
+    if token_record is None:
+        raise HTTPException(status_code=401, detail="Token no encontrado.")
+    if token_record.get("revoked_at") is not None:
+        raise HTTPException(status_code=401, detail="El token ya fue revocado.")
 
-    access_token = create_access_token(token)
-    response.set_cookie(
-        key="access_token",
-        value=access_token,
-        httponly=True,
-        secure=True,
-        samesite="Lax"
-    )
-
-    return {"detail": "Token de acceso actualizado."}
-
-
-# @router.post("/logout")
-# def logout(token: str = Depends(oauth2_scheme)):
-#     blacklisted_tokens.add(token)
-#     return {"detail": "Sesión cerrada exitosamente"}
-
-# Cierra sesión y elimina la cookie y el token de la lista negra por medio de un identificador
-@router.post("/logout")
-def logout(response: Response, token: str = Depends(oauth2_scheme)):
-    blacklisted_tokens.add(token)
+    # Revocar el token
+    try:
+        revoke_token(token)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al revocar token: {str(e)}")
+    
     response.delete_cookie(key="access_token")
-    return {"detail": "Sesión cerrada exitosamente"}
+    return {"detail": "Sesión cerrada exitosamente."}
 
-@router.get("/protected")
-def protected_route(username: str = Depends(verify_token)):
-    return {"detail": f"Bienvenido {username}, esta es una ruta protegida."}
 
 @router.post("/verify-email")
 async def verify_email(request: Request):
@@ -161,3 +160,114 @@ async def verify_code(request: Request):
         raise HTTPException(status_code=400, detail=result["error"])
 
     return result
+
+@router.post("/forgot_password")
+async def forgot_password(request: Request):
+    """
+    Genera un token de restablecimiento y envía un email con un enlace para recuperar la contraseña.
+    Se responde siempre con un mensaje genérico.
+    """
+    try:
+        body = await request.json()
+        email = body.get("email")
+        if not email:
+            raise HTTPException(status_code=400, detail="El campo 'email' es obligatorio.")
+
+        # Verificar si el usuario existe en la base de datos 'users' (usando aiosqlite)
+        user = None
+        async with aiosqlite.connect("verification.db") as conn:
+            conn.row_factory = aiosqlite.Row
+            async with conn.execute("SELECT user_id, email FROM users WHERE email = ?", (email,)) as cursor:
+                user = await cursor.fetchone()
+        generic_response = {"detail": "Si existe una cuenta asociada, se han enviado instrucciones al correo."}
+        if not user:
+            return generic_response
+
+        user_id = user["user_id"]
+        # Generar token de restablecimiento (JWT) con expiración corta
+        reset_token = create_password_reset_token(user_id)
+        expires_at = (datetime.now() + timedelta(minutes=15)).isoformat()
+
+        # Almacenar el token de restablecimiento en la tabla 'tokens'
+        store_token(reset_token, user_id, "password_reset", expires_at)
+
+        # Construir el enlace de restablecimiento (ajusta la URL a tu frontend)
+        reset_link = f"https://maplenet.com.bo/reset-password?token={reset_token}"
+        send_email(
+            to_email=email,
+            subject="Recupera tu contraseña",
+            body=f"Para restablecer tu contraseña, haz clic en el siguiente enlace: <br><br> <a href='{reset_link}'>PULSA AQUÍ</a>"
+        )
+
+        return generic_response
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
+
+@router.post("/reset_password")
+async def reset_password(request: Request):
+    """
+    Recibe el token de restablecimiento y las nuevas contraseñas, valida el token,
+    actualiza la contraseña en Odoo y en la base de datos 'users',
+    y marca el token como usado.
+    """
+    try:
+        body = await request.json()
+        reset_token = body.get("token")
+        new_password = body.get("new_password")
+        verify_password = body.get("verify_password")
+
+        if not reset_token or not new_password or not verify_password:
+            raise HTTPException(
+                status_code=400,
+                detail="Los campos 'token', 'new_password' y 'verify_password' son obligatorios."
+            )
+        if new_password != verify_password:
+            raise HTTPException(status_code=400, detail="La nueva contraseña y su verificación no coinciden.")
+        if not _is_valid_password(new_password):
+            raise HTTPException(
+                status_code=400,
+                detail="La nueva contraseña debe tener al menos 8 caracteres, 1 mayúscula, 1 minúscula, 1 número y 1 carácter especial."
+            )
+
+        # Decodificar y verificar el token
+        try:
+            payload = jwt.decode(reset_token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
+        except JWTError:
+            raise HTTPException(status_code=401, detail="Token inválido o expirado.")
+        if payload.get("action") != "reset_password":
+            raise HTTPException(status_code=401, detail="Token no autorizado para restablecer contraseña.")
+        user_id = payload.get("user_id")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Token inválido: falta 'user_id'.")
+
+        # Verificar que el token no haya sido usado o revocado
+        token_record = get_token_record(reset_token)
+        if token_record is None:
+            raise HTTPException(status_code=401, detail="Token no encontrado.")
+        if token_record.get("used") == 1:
+            raise HTTPException(status_code=401, detail="El token ya ha sido utilizado.")
+        if token_record.get("revoked_at") is not None:
+            raise HTTPException(status_code=401, detail="El token ha sido revocado.")
+
+        # Actualizar la contraseña en Odoo
+        odoo_conn = get_odoo_connection()
+        update_success = odoo_conn['models'].execute_kw(
+            odoo_conn['db'], odoo_conn['uid'], odoo_conn['password'],
+            'res.users', 'write', [[user_id], {'password': new_password}]
+        )
+        if not update_success:
+            raise HTTPException(status_code=500, detail="No se pudo actualizar la contraseña en Odoo.")
+
+        # Actualizar la contraseña en SQLite
+        update_user_password(user_id, new_password)
+
+        # Marcar el token de restablecimiento como usado
+        mark_token_as_used(reset_token)
+
+        return {"detail": "Contraseña restablecida exitosamente."}
+
+    except HTTPException as http_error:
+        raise http_error
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")

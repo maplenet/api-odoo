@@ -1,28 +1,18 @@
 from fastapi import APIRouter, HTTPException, Depends, Request
+import re
 from app.core.security import verify_token
 from app.core.database import get_odoo_connection, get_sqlite_connection
-from app.core.email_utils import send_email
 from datetime import datetime, timedelta, timezone
 from app.services.api_service import build_customer_data, create_customer_in_pontis, login_to_external_api
 from app.services.odoo_service import execute_odoo_method
-import re
+from app.services.sqlite_service import get_decrypted_password, insert_user_record, update_user_password
 
 
 router = APIRouter(prefix="/users", tags=["users"])
 
-
 def _is_valid_password(password: str) -> bool:
-    """
-    Verifica que la contraseña cumpla con los siguientes requisitos:
-    - Mínimo 8 caracteres
-    - Al menos 1 mayúscula
-    - Al menos 1 minúscula
-    - Al menos 1 número
-    - Al menos 1 carácter especial (@, #, $, %, etc.)
-    """
-    pattern = r"^(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$"
+    pattern = r"^(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[@$!%*?&_])[A-Za-z\d@$!%*?&_]{8,}$"
     return bool(re.match(pattern, password))
-
 
 @router.post("/create")
 async def create_user(request: Request):
@@ -35,6 +25,7 @@ async def create_user(request: Request):
         password = body.get("password")
         password2 = body.get("verify_password")
 
+        # Validaciones básicas...
         if not first_name:
             raise HTTPException(status_code=400, detail="The 'first_name' field is required.")
         if not last_name:
@@ -48,14 +39,12 @@ async def create_user(request: Request):
         if not password2:
             raise HTTPException(status_code=400, detail="The 'verify_password' field is required.")
 
-        # Cortamos los espacios en blanco al principio y al final de los campos first_name, last_name, email y mobile y si como resultado queda vacío, lanzamos un error
         if first_name.strip() == "" or last_name.strip() == "" or email.strip() == "" or mobile.strip() == "":
             raise HTTPException(status_code=400, detail="The fields cannot be empty.")
 
         if password != password2:
             raise HTTPException(status_code=400, detail="The passwords do not match.")
 
-        # Verificamos que la contraseña tenga al menos 8 caracteres 1 mayúscula, 1 minúscula, 1 número y 1 caracter especial
         if not _is_valid_password(password):
             raise HTTPException(
                 status_code=400, 
@@ -63,29 +52,25 @@ async def create_user(request: Request):
             )
 
         sqlite_conn = get_sqlite_connection()
-
-        # Verificar el correo en la tabla de verification_codes
         cursor = sqlite_conn.cursor()
-        cursor.execute("SELECT * FROM verification_codes WHERE email = ? ORDER BY id DESC LIMIT 1", (email,))
+
+        # Verificar el correo en la tabla de verification
+        cursor.execute("SELECT * FROM verification WHERE email = ? ORDER BY id DESC LIMIT 1", (email,))
         verification_record = cursor.fetchone()
 
         if not verification_record:
             raise HTTPException(status_code=400, detail="The email has not been registered for verification.")
 
-        # Verificar el estado del registro
-        status = verification_record[2]  # Índice del estado en la tabla
+        status = verification_record[2]
         if status == 0:
             raise HTTPException(status_code=400, detail="The email has not been verified.")
 
-        # Obtener la conexión a Odoo
         odoo_conn = get_odoo_connection()
 
-        # Verificar que el correo no esté registrado en Odoo
         existing_user = execute_odoo_method(odoo_conn, 'res.users', 'search_count', [[('login', '=', email)]])
         if existing_user:
             raise HTTPException(status_code=400, detail="The email is already registered in the system.")
 
-        # Obtener el res_id del grupo "Portal"
         group_portal = execute_odoo_method(
             odoo_conn, 'ir.model.data', 'search_read',
             [[('model', '=', 'res.groups'), ('module', '=', 'base'), ('name', '=', 'group_portal')]],
@@ -95,7 +80,6 @@ async def create_user(request: Request):
             raise HTTPException(status_code=500, detail="The Portal group was not found in Odoo.")
         group_portal_id = group_portal[0]['res_id']
 
-        # Crear el usuario en Odoo
         user_id = execute_odoo_method(
             odoo_conn, 'res.users', 'create', [{
                 'login': email,
@@ -103,11 +87,14 @@ async def create_user(request: Request):
                 'email': email,
                 'mobile': mobile,
                 'password': password,
-                'lang': 'es_MX',  # Establecer el idioma a español de México
-                'groups_id': [(6, 0, [group_portal_id])]  # Asignar grupo Portal
+                'lang': 'es_MX',
+                'groups_id': [(6, 0, [group_portal_id])]
             }],
-            context={'no_reset_password': True}
+            kwargs={'context': {'no_reset_password': True}}
         )
+
+        # Insertar el registro del usuario en SQLite (la contraseña se encripta automáticamente)
+        insert_user_record(user_id, first_name, last_name, email, password)
 
         return {"detail": "Successful process", "id": user_id}
 
@@ -118,72 +105,67 @@ async def create_user(request: Request):
     finally:
         sqlite_conn.close()
 
-# Cambiar la contraseña de un usuario
-@router.post("/change_password")
-async def change_password(request: Request):
-    odoo_conn = get_odoo_connection()
+@router.patch("/change_password")
+async def change_password(request: Request, token_payload: dict = Depends(verify_token)):
     try:
-        # Obtener los datos del cuerpo de la solicitud
         body = await request.json()
-        user_id = body.get("user_id")
+        current_password = body.get("current_password")
         new_password = body.get("new_password")
+        verify_password = body.get("verify_password")
 
-        # Validar que los campos requeridos estén presentes
-        if not user_id or not new_password:
-            raise HTTPException(status_code=400, detail="Los campos 'user_id' y 'new_password' son obligatorios.")
+        # Validar que se envíen los campos requeridos
+        if not current_password or not new_password or not verify_password:
+            raise HTTPException(
+                status_code=400,
+                detail="The fields 'current_password', 'new_password' and 'verify_password' are required."
+            )
 
-        # Cambiar la contraseña del usuario
-        success = odoo_conn['models'].execute_kw(
+        # Validar que la nueva contraseña y su verificación coincidan
+        if new_password != verify_password:
+            raise HTTPException(status_code=400, detail="The new password and your verification do not match.")
+
+        # Validar el formato de la nueva contraseña
+        if not _is_valid_password(new_password):
+            raise HTTPException(
+                status_code=400,
+                detail="The new password must be at least 8 characters, 1 uppercase letter, 1 lowercase letter, 1 number, and 1 special character."
+            )
+
+        # Extraer user_id desde el token
+        user_id = token_payload.get("user_id")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid token: 'user_id' is missing.")
+
+        # Obtener y desencriptar la contraseña almacenada en SQLite
+        try:
+            stored_password = get_decrypted_password(user_id)
+        except Exception as ex:
+            raise HTTPException(status_code=404, detail=str(ex))
+
+        # Comparar la contraseña actual proporcionada con la almacenada
+        if current_password != stored_password:
+            raise HTTPException(status_code=400, detail="The current password is incorrect.")
+
+        # Actualizar la contraseña en Odoo
+        odoo_conn = get_odoo_connection()
+        update_success = odoo_conn['models'].execute_kw(
             odoo_conn['db'], odoo_conn['uid'], odoo_conn['password'],
             'res.users', 'write', [[user_id], {'password': new_password}]
         )
+        if not update_success:
+            raise HTTPException(status_code=500, detail="Could not update password in Odoo.")
 
-        # Verificar que la operación fue exitosa
-        if not success:
-            raise HTTPException(status_code=500, detail="No se pudo cambiar la contraseña.")
+        # Actualizar la contraseña en SQLite
+        update_user_password(user_id, new_password)
 
-        return {"detail": "Contraseña cambiada exitosamente."}
+        return {"detail": "Password changed successfully."}
 
     except HTTPException as http_error:
-        # Error esperado
         raise http_error
     except Exception as e:
-        # Error inesperado
-        raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal Error: {str(e)}")
     
 
-# Actualizar solo la contraseña de un usuario por medio de su id
-@router.post("/update_password")
-async def update_password(request: Request):
-    odoo_conn = get_odoo_connection()
-    try:
-        # Obtener los datos del cuerpo de la solicitud
-        body = await request.json()
-        user_id = body.get("user_id")
-        new_password = body.get("new_password")
-
-        # Validar que los campos requeridos estén presentes
-        if not user_id or not new_password:
-            raise HTTPException(status_code=400, detail="Los campos 'user_id' y 'new_password' son obligatorios.")
-
-        # Cambiar la contraseña del usuario
-        success = odoo_conn['models'].execute_kw(
-            odoo_conn['db'], odoo_conn['uid'], odoo_conn['password'],
-            'res.users', 'write', [[user_id], {'password': new_password}]
-        )
-
-        # Verificar que la operación fue exitosa
-        if not success:
-            raise HTTPException(status_code=500, detail="No se pudo cambiar la contraseña.")
-
-        return {"detail": "Contraseña cambiada exitosamente."}
-
-    except HTTPException as http_error:
-        # Error esperado
-        raise http_error
-    except Exception as e:
-        # Error inesperado
-        raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
 
 @router.get("/get/{user_id}")
 async def get_user_with_service(user_id: int, token=Depends(verify_token)):
