@@ -27,6 +27,8 @@ def create_tables():
         password TEXT NOT NULL,
         street TEXT,
         ci TEXT,
+        service_policies_accepted INTEGER NOT NULL DEFAULT 0,
+        service_policies_acceptance_date TIMESTAMP,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     """)

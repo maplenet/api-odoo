@@ -30,7 +30,7 @@ async def login_to_external_api():
             detail=f"Error interno al conectarse a la API externa: {str(e)}"
         )
    
-def build_customer_data(id_user, contact_data, id_plan):
+def build_customer_data(id_user, contact_data, id_plan, password):
 
     contact = contact_data[0]
 
@@ -129,7 +129,7 @@ def build_customer_data(id_user, contact_data, id_plan):
             "primarySubtitleLanguage": "spa",
             "secondarySubtitleLanguage": "eng",
             "login": "MAP0"+str(id_user),
-            "password": "abc123"
+            "password": password
         },
         "customerInfo": {
             "address1": "CALLE MAPLENET",

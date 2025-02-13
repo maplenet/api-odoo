@@ -4,19 +4,19 @@ from app.core.database import get_sqlite_connection
 from app.core.crypto import encrypt_password, decrypt_password
 
 
-def insert_user_record(user_id: int, first_name: str, last_name: str, email: str, mobile: str,password: str):
+def insert_user_record(user_id: int, first_name: str, last_name: str, email: str, mobile: str, password: str):
     """
     Inserta un registro en la tabla `users` en SQLite con la contraseña encriptada.
+    Los campos 'service_policies_accepted' se inicializan en 0 (false) y 'service_policies_acceptance_date' en NULL.
     """
-    # Encriptar la contraseña antes de guardarla
     encrypted_password = encrypt_password(password)
     
     conn = get_sqlite_connection()
     try:
         cursor = conn.cursor()
         query = """
-            INSERT INTO users (user_id, first_name, last_name, email, mobile, password)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO users (user_id, first_name, last_name, email, mobile, password, service_policies_accepted, service_policies_acceptance_date)
+            VALUES (?, ?, ?, ?, ?, ?, 0, NULL)
         """
         cursor.execute(query, (user_id, first_name, last_name, email, mobile, encrypted_password))
         conn.commit()
@@ -77,5 +77,27 @@ def get_user_record(user_id: int) -> dict:
         return dict(row)
     except Exception as e:
         raise Exception(f"Error al obtener el registro del usuario: {str(e)}")
+    finally:
+        conn.close()
+
+def update_user_policies(user_id: int):
+    """
+    Actualiza el registro del usuario en la tabla 'users' para marcar que ha aceptado las políticas
+    de servicio (service_policies_accepted = 1) y registra la fecha de aceptación (service_policies_acceptance_date)
+    con la fecha y hora actual.
+    """
+    conn = get_sqlite_connection()
+    try:
+        cursor = conn.cursor()
+        query = """
+            UPDATE users
+            SET service_policies_accepted = 1,
+                service_policies_acceptance_date = CURRENT_TIMESTAMP
+            WHERE user_id = ?
+        """
+        cursor.execute(query, (user_id,))
+        conn.commit()
+    except Exception as e:
+        raise Exception(f"Error al actualizar las políticas del usuario: {str(e)}")
     finally:
         conn.close()

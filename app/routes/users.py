@@ -6,13 +6,18 @@ from datetime import datetime, timedelta, timezone
 from app.services.api_service import build_customer_data, create_customer_in_pontis, login_to_external_api
 from app.services.odoo_service import execute_odoo_method
 from app.services.sqlite_service import get_decrypted_password, get_user_record, insert_user_record, update_user_password
+from app.services.sqlite_service import update_user_policies  # Asegúrate de importar la función
+
 
 
 router = APIRouter(prefix="/users", tags=["users"])
 
 def _is_valid_password(password: str) -> bool:
-    pattern = r"^(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[@$!%*?&_])[A-Za-z\d@$!%*?&_]{8,}$"
+    # El password debe ser alfanumérico, tener entre 8 y 40 caracteres, 
+    # al menos 1 mayúscula, 1 minúscula y 1 número.
+    pattern = r"^(?=.*[A-Z])(?=.*[a-z])(?=.*\d)[A-Za-z\d]{8,40}$"
     return bool(re.match(pattern, password))
+
 
 @router.post("/create")
 async def create_user(request: Request):
@@ -49,7 +54,7 @@ async def create_user(request: Request):
         if not _is_valid_password(password):
             raise HTTPException(
                 status_code=400, 
-                detail="The password must have at least 8 characters, including 1 uppercase, 1 lowercase, 1 number, and 1 special character."
+                detail="The password must have at least 8 characters and max 40 characteres, including 1 uppercase, 1 lowercase and 1 number."
             )
 
         sqlite_conn = get_sqlite_connection()
@@ -130,7 +135,7 @@ async def change_password(request: Request, token_payload: dict = Depends(verify
         if not _is_valid_password(new_password):
             raise HTTPException(
                 status_code=400,
-                detail="The new password must be at least 8 characters, 1 uppercase letter, 1 lowercase letter, 1 number, and 1 special character."
+                detail="The password must have at least 8 characters and max 40 characteres, including 1 uppercase, 1 lowercase and 1 number."
             )
 
         # Extraer user_id desde el token
@@ -445,17 +450,26 @@ async def update_user(request: Request, token_payload: dict = Depends(verify_tok
         execute_odoo_method(conn, 'account.payment.register', 'action_create_payments', [[payment_register_id[0]]])
         
         updated_contact = execute_odoo_method(conn, 'res.partner', 'read', [[partner_id]])
-        
+
+
+        # Obtener el password desencriptado del usuario (nuevo)
+        plain_password = get_decrypted_password(id_user)
+
+        print("plain_password: ", plain_password)
+
         # Conexión a Pontis
         await login_to_external_api()
-        customer_data = build_customer_data(id_user, updated_contact, id_plan)
-        # create_customer_response = await create_customer_in_pontis(customer_data)
+        customer_data = build_customer_data(id_user, updated_contact, id_plan, plain_password)
+        create_customer_response = await create_customer_in_pontis(customer_data)
+
+        # Actualizar el usuario en SQLite para marcar la aceptación de políticas
+        update_user_policies(id_user)
         
         return {
             "detail": "Factura creada y pagada correctamente", 
             "invoice_id": invoice_id, 
             "payment_id": payment_register_id,
-            # "res_pontis": create_customer_response
+            "res_pontis": create_customer_response
         }
         
     except HTTPException as http_error:

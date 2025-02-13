@@ -315,7 +315,7 @@ async def reset_password(request: Request):
         if not _is_valid_password(new_password):
             raise HTTPException(
                 status_code=400,
-                detail="La nueva contraseña debe tener al menos 8 caracteres, 1 mayúscula, 1 minúscula, 1 número y 1 carácter especial."
+                detail="The password must have at least 8 characters and max 40 characteres, including 1 uppercase, 1 lowercase and 1 number."
             )
 
         # Decodificar y verificar el token
