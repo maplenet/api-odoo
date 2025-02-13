@@ -3,7 +3,7 @@ import random
 
 from fastapi import HTTPException
 from app.core.database import get_sqlite_connection
-from app.core.email_utils import send_email
+from app.core.email_utils import send_verification_email
 
 def generate_verification_code():
     return f"{random.randint(100000, 999999)}"
@@ -31,10 +31,10 @@ def create_verification_code(email: str):
         conn.commit()
 
     # Enviar el código por correo electrónico
-    send_email(
+    send_verification_email(
         to_email=email,
         subject="Código de verificación: " + code,
-        body=code,  # No necesitamos el cuerpo en texto plano
+        code=code,  # No necesitamos el cuerpo en texto plano
     )
     return code
 

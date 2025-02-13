@@ -1,7 +1,6 @@
 from fastapi import APIRouter, HTTPException, Query, Depends
 from app.core.security import verify_token
 from app.core.database import get_odoo_connection
-from app.core.email_utils import send_email
 
 router = APIRouter(prefix="/contacts", tags=["contacts"])
 
@@ -95,81 +94,7 @@ def create_contact(contact: dict, str = Depends(verify_token)):
 #     except Exception as e:
 #         raise HTTPException(status_code=500, detail=str(e))
 
-# Todo: Convertir todas las funciones en Funciones asincronas
-@router.post("/create_basic")
-def create_contact_basic(contact: dict, str = Depends(verify_token)):
-    conn = get_odoo_connection()
-    try:
-        # Validar los campos requeridos
-        email = contact.get("email")
-        mobile = contact.get("mobile")
-        if not email or not mobile:
-            raise HTTPException(status_code=400, detail="Los campos 'email' y 'mobile' son requeridos.")
 
-        # Verificar si ya existe un contacto con el mismo email o móvil
-        existing_contacts = conn['models'].execute_kw(
-            conn['db'], conn['uid'], conn['password'],
-            'res.partner',
-            'search_count',
-            [['|', ['email', '=', email], ['mobile', '=', mobile]]]
-        )
-        if existing_contacts > 0:
-            raise HTTPException(status_code=400, detail="Ya existe un contacto con el mismo email o móvil.")
-
-        # Crear el contacto
-        contact_id = conn['models'].execute_kw(
-            conn['db'], conn['uid'], conn['password'],
-            'res.partner',
-            'create',
-            [contact]
-        )
-
-        # Enviar correo de notificación
-        subject = "¡Contacto registrado exitosamente!"
-        body = f"""
-        <html>
-        <body>
-            <h1>Hola {contact.get('name', 'Usuario')}!</h1>
-            <p>Tu contacto ha sido registrado exitosamente en nuestro sistema, ESta es una prueba para ver si ya se cumplio con lo pedido..</p>
-            <p>Si tienes alguna pregunta, no dudes en contactarnos. -------------------------------------</p>
-        </body>
-        </html>
-        """
-        send_email(to_email=email, subject=subject, body=body)
-
-        return {
-            "contact_id": contact_id,
-            "detail": f"Contacto creado exitosamente y correo enviado a {email}"
-        }
-    except Exception as e:
-        import traceback
-        error_trace = traceback.format_exc()
-        raise HTTPException(status_code=500, detail=f"Error interno: {error_trace}")
-
-
-# Crear endpoint para enviar correo de notificación de cualquier evento
-@router.post("/send_email")
-def send_notification_email(email: str, subject: str, body: str, str = Depends(verify_token)):
-    try:
-        send_email(to_email=email, subject=subject, body=body)
-        return {"detail": "Correo enviado exitosamente"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-# Obtener todos los contactos
-@router.get("/")
-def get_contacts(username: str = Depends(verify_token)):
-    conn = get_odoo_connection()
-    try:
-        result = conn['models'].execute_kw(
-            conn['db'], conn['uid'], conn['password'],
-            'res.partner',
-            'search_read',
-            [[]]
-        )
-        return {"contacts": result, "total": len(result)}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
 # Obtener contactos paginados y filtrados
 @router.get("/paginated")

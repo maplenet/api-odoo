@@ -3,7 +3,7 @@ from fastapi import APIRouter, HTTPException, Request, Depends, Response
 from jose import jwt, JWTError
 from datetime import datetime, timedelta
 from app.core.security import settings 
-from app.core.email_utils import send_email
+from app.core.email_utils import send_reset_password_email
 from app.core.email_validation import is_valid_email
 from app.core.security import create_access_token, create_password_reset_token, verify_token, oauth2_scheme, blacklisted_tokens
 from app.core.database import get_odoo_connection
@@ -193,10 +193,10 @@ async def forgot_password(request: Request):
 
         # Construir el enlace de restablecimiento (ajusta la URL a tu frontend)
         reset_link = f"https://maplenet.com.bo/reset-password?token={reset_token}"
-        send_email(
+        send_reset_password_email(
             to_email=email,
             subject="Recupera tu contraseña",
-            body=f"Para restablecer tu contraseña, haz clic en el siguiente enlace: <br><br> <a href='{reset_link}'>PULSA AQUÍ</a>"
+            reset_link=reset_link
         )
 
         return generic_response
