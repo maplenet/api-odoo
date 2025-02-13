@@ -82,22 +82,32 @@ def get_user_record(user_id: int) -> dict:
 
 def update_user_policies(user_id: int):
     """
-    Actualiza el registro del usuario en la tabla 'users' para marcar que ha aceptado las políticas
-    de servicio (service_policies_accepted = 1) y registra la fecha de aceptación (service_policies_acceptance_date)
-    con la fecha y hora actual.
+    Actualiza el campo service_policies_accepted a 1 y establece service_policies_acceptance_date 
+    a CURRENT_TIMESTAMP solo si el usuario aún no ha aceptado las políticas (valor 0).
+    Si ya ha sido aceptado (valor 1) y tiene fecha asignada, no realiza cambios.
     """
     conn = get_sqlite_connection()
     try:
         cursor = conn.cursor()
-        query = """
-            UPDATE users
-            SET service_policies_accepted = 1,
-                service_policies_acceptance_date = CURRENT_TIMESTAMP
-            WHERE user_id = ?
-        """
-        cursor.execute(query, (user_id,))
-        conn.commit()
+        # Consultar el estado actual de service_policies_accepted y la fecha de aceptación
+        cursor.execute("SELECT service_policies_accepted, service_policies_acceptance_date FROM users WHERE user_id = ?", (user_id,))
+        row = cursor.fetchone()
+        if row is None:
+            raise Exception("Usuario no encontrado en la base de datos.")
+        
+        current_status, acceptance_date = row[0], row[1]
+        
+        # Si el campo está en 0 (no aceptado) o no tiene fecha asignada, se actualiza
+        if current_status == 0 or acceptance_date is None:
+            cursor.execute("""
+                UPDATE users 
+                SET service_policies_accepted = 1, 
+                    service_policies_acceptance_date = CURRENT_TIMESTAMP
+                WHERE user_id = ?
+            """, (user_id,))
+            conn.commit()
     except Exception as e:
         raise Exception(f"Error al actualizar las políticas del usuario: {str(e)}")
     finally:
         conn.close()
+
