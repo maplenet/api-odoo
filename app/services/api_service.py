@@ -124,6 +124,7 @@ def build_customer_data(id_user, contact_data, id_plan):
         "customerAccount": {
             "effectiveDt": effective_dt,
             "expireDt": "",
+            "primaryAudioLanguage": "spa", 
             "secondaryAudioLanguage": "eng",
             "primarySubtitleLanguage": "spa",
             "secondarySubtitleLanguage": "eng",

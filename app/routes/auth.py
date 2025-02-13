@@ -80,6 +80,92 @@ async def login(request: Request, response: Response):
         raise http_err
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error interno del servidor: {str(e)}")
+    
+@router.post("/login_internal")
+async def login_internal(request: Request, response: Response):
+    """
+    Endpoint exclusivo para usuarios internos.
+    Se autentica al usuario en Odoo y, además, se verifica que el usuario pertenezca
+    al grupo interno (base.group_user). Si no es así, se rechaza el acceso.
+    """
+    body = await request.json()
+    email = body.get("email")
+    password = body.get("password")
+
+    if not email or not password:
+        raise HTTPException(status_code=400, detail="Se requieren 'email' y 'password'.")
+
+    if not is_valid_email(email):
+        raise HTTPException(status_code=400, detail="Correo inválido.")
+
+    try:
+        # Conectar con Odoo
+        conn = get_odoo_connection()
+        if "common" not in conn or "models" not in conn:
+            raise HTTPException(status_code=500, detail="Error en la conexión con Odoo.")
+
+        # Autenticar usuario en Odoo
+        user_id = conn["common"].authenticate(conn["db"], email, password, {})
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Credenciales inválidas.")
+
+        # Obtener información del usuario, incluyendo grupos (agregamos groups_id)
+        user_data = conn["models"].execute_kw(
+            conn["db"], conn["uid"], conn["password"],
+            "res.users", "search_read", [[["id", "=", user_id]]],
+            {"fields": ["id", "name", "login", "email", "partner_id", "groups_id"]}
+        )
+        if not user_data:
+            raise HTTPException(status_code=404, detail="No se encontró el usuario.")
+        user = user_data[0]
+
+        # Obtener el ID del grupo interno "base.group_user"
+        internal_group = conn["models"].execute_kw(
+            conn["db"], conn["uid"], conn["password"],
+            "ir.model.data", "search_read",
+            [[('model', '=', 'res.groups'), ('module', '=', 'base'), ('name', '=', 'group_user')]],
+            {"fields": ["res_id"], "limit": 1}
+        )
+        if not internal_group:
+            raise HTTPException(status_code=500, detail="No se encontró el grupo interno.")
+        internal_group_id = internal_group[0]["res_id"]
+
+        # Verificar que el usuario pertenezca al grupo interno
+        # Los grupos se retornan como una lista de IDs.
+        if internal_group_id not in user.get("groups_id", []):
+            raise HTTPException(status_code=403, detail="No estás autorizado para usar este portal.")
+
+        # Si la verificación es correcta, generar token de acceso
+        access_token = create_access_token(user["id"], user["partner_id"][0])
+        expires_at = (datetime.now() + timedelta(minutes=settings.JWT_EXPIRATION_MINUTES)).isoformat()
+
+        # Almacenar el token en la tabla 'tokens'
+        store_token(access_token, user["id"], "access", expires_at)
+
+        # Configurar respuesta con cookie
+        response = JSONResponse(
+            content={
+                "user_id": user["id"],
+                "partner_id": user["partner_id"][0],
+                "access_token": access_token,
+                "detail": "Proceso exitoso."
+            }
+        )
+        response.set_cookie(
+            key="access_token",
+            value=access_token,
+            httponly=False,
+            secure=False,
+            samesite="lax"
+        )
+
+        return response
+
+    except HTTPException as http_err:
+        raise http_err
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error interno del servidor: {str(e)}")
+
 
 
 @router.post("/logout/{id_user}")
