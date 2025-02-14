@@ -2,13 +2,15 @@
 ├── app
 │   ├── config.py
 │   ├── core
+│   │   ├── crypto.py
 │   │   ├── database.py
 │   │   ├── email.py
 │   │   ├── email_utils.py
 │   │   ├── email_validation.py
 │   │   ├── __init__.py
 │   │   ├── __pycache__
-│   │   └── security.py
+│   │   ├── security.py
+│   │   └── templates
 │   ├── __init__.py
 │   ├── main.py
 │   ├── models
@@ -31,10 +33,13 @@
 │   │   ├── system.py
 │   │   └── users.py
 │   └── services
+│       ├── api_service.py
 │       ├── __init__.py
 │       ├── odoo_service.py
 │       ├── __pycache__
 │       ├── sale_service.py
+│       ├── sqlite_service.py
+│       ├── token_service.py
 │       └── verification_service.py
 ├── conversorBase64.py
 ├── create_contacts.py
@@ -43,6 +48,7 @@
 ├── INSTALL.md
 ├── query_db.py
 ├── README.md
+├── requirements.tx
 ├── requirements.txt
 ├── test_email.py
 ├── venv
@@ -54,6 +60,7 @@
 │   │   ├── dotenv
 │   │   ├── email_validator
 │   │   ├── fastapi
+│   │   ├── httpx
 │   │   ├── normalizer
 │   │   ├── pip
 │   │   ├── pip3
@@ -76,4 +83,4 @@
 │   └── pyvenv.cfg
 └── verification.db
 
-17 directories, 60 files
+18 directories, 66 files

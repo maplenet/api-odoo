@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends, Request
 import re
 from app.core.security import verify_token
 from app.core.database import get_odoo_connection, get_sqlite_connection
+from app.core.email_utils import send_pontis_credentials_email
 from datetime import datetime, timedelta, timezone
 from app.services.api_service import build_customer_data, create_customer_in_pontis, login_to_external_api
 from app.services.odoo_service import execute_odoo_method
@@ -455,12 +456,27 @@ async def update_user(request: Request, token_payload: dict = Depends(verify_tok
         # Obtener el password desencriptado del usuario (nuevo)
         plain_password = get_decrypted_password(id_user)
 
-        print("plain_password: ", plain_password)
-
         # Conexión a Pontis
         await login_to_external_api()
         customer_data = build_customer_data(id_user, updated_contact, id_plan, plain_password)
         create_customer_response = await create_customer_in_pontis(customer_data)
+
+        # Verificar que se obtuvo correctamente el nombre de usuario de Pontis
+        if not create_customer_response.get("response"):
+            raise HTTPException(status_code=500, detail="No se obtuvieron credenciales de Pontis.")
+        pontis_username = create_customer_response["response"]
+
+        # obtenemos el email del usuario desde SQLite
+        user_record = get_user_record(id_user)
+        email = user_record.get("email")
+
+         # Enviar credenciales al usuario por correo
+        send_pontis_credentials_email(
+            to_email=email,  # Ajusta: aquí deberías usar el correo del usuario, p.ej. la variable email.
+            subject="Tus credenciales de acceso:",
+            pontis_username=pontis_username,
+            pontis_password=plain_password
+        )
 
         # Actualizar el usuario en SQLite para marcar la aceptación de políticas
         update_user_policies(id_user)
