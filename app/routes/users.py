@@ -1,3 +1,5 @@
+import random
+import string
 from fastapi import APIRouter, HTTPException, Depends, Request, Query
 import re
 from app.core.security import verify_token
@@ -494,15 +496,15 @@ async def update_user(request: Request, token_payload: dict = Depends(verify_tok
         raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
     
 
-@router.post("/search_user")
-async def search_user(request: Request, token_payload: dict = Depends(verify_token)):
+@router.post("/search_contact")
+async def search_contact(request: Request, token_payload: dict = Depends(verify_token)):
     """
-    Busca en Odoo la información de un usuario y su contacto a partir del correo recibido en el body.
+    Busca en Odoo la información de un contacto a partir del correo recibido en el body.
     Requiere un token válido y que el usuario que consulta sea interno.
     
     Valida que exista una factura pagada para el contacto y que la fecha actual esté dentro de
     30 días desde la fecha de emisión. Devuelve un JSON con:
-      - id: id del usuario
+      - id: id del contacto (en formato string)
       - fullName: nombre completo del contacto
       - ci: campo 'vat' del contacto (CI)
       - phone: móvil del contacto
@@ -513,7 +515,7 @@ async def search_user(request: Request, token_payload: dict = Depends(verify_tok
         # Conectar a Odoo
         conn = get_odoo_connection()
 
-        # Verificar que el usuario que hace la consulta sea interno
+        # Verificar que el usuario que consulta sea interno
         token_user_id = token_payload.get("user_id")
         user_info = execute_odoo_method(
             conn, 'res.users', 'read', [[token_user_id], ['groups_id']]
@@ -537,38 +539,24 @@ async def search_user(request: Request, token_payload: dict = Depends(verify_tok
         if not email:
             raise HTTPException(status_code=400, detail="El campo 'email' es obligatorio.")
 
-        # Buscar el usuario por email en Odoo
-        users = execute_odoo_method(
-            conn, 'res.users', 'search_read',
+        # Buscar el contacto por email en Odoo (en lugar de buscar un usuario)
+        contacts = execute_odoo_method(
+            conn, 'res.partner', 'search_read',
             [[('email', '=', email)]],
-            {'fields': ['id', 'name', 'login', 'partner_id']}
-        )
-        if not users:
-            raise HTTPException(status_code=404, detail="Usuario no encontrado.")
-        user_found = users[0]
-        user_id = user_found["id"]
-
-        # Obtener el contacto asociado (solicitamos también el campo 'vat' para el CI)
-        partner_ids = user_found.get("partner_id")
-        if not partner_ids or not partner_ids[0]:
-            raise HTTPException(status_code=404, detail="El usuario no tiene contacto asociado.")
-        partner_id = partner_ids[0]
-        contact = execute_odoo_method(
-            conn, 'res.partner', 'read', [[partner_id]],
             {'fields': ['id', 'name', 'mobile', 'email', 'vat']}
         )
-        if not contact:
+        if not contacts:
             raise HTTPException(status_code=404, detail="Contacto no encontrado.")
-        contact_info = contact[0]
+        contact_info = contacts[0]
 
-        # Verificar que el usuario tenga una factura pagada
+        # Verificar que el contacto tenga una factura pagada
         invoices = execute_odoo_method(
             conn, 'account.move', 'search_read',
-            [[('partner_id', '=', partner_id), ('payment_state', '=', 'paid')]],
+            [[('partner_id', '=', contact_info["id"]), ('payment_state', '=', 'paid')]],
             {'fields': ['invoice_date', 'invoice_line_ids'], 'order': 'invoice_date desc', 'limit': 1}
         )
         if not invoices:
-            raise HTTPException(status_code=404, detail="No se encontró factura pagada para este usuario.")
+            raise HTTPException(status_code=404, detail="No se encontró factura pagada para este contacto.")
         invoice = invoices[0]
         invoice_date_str = invoice.get('invoice_date')
         if not invoice_date_str:
@@ -588,9 +576,9 @@ async def search_user(request: Request, token_payload: dict = Depends(verify_tok
             raise HTTPException(status_code=500, detail="No se pudo determinar el plan de servicio.")
         planId = invoice_lines[0]['product_id'][0]
 
-        # Preparar el JSON de respuesta
+        # Preparar y devolver el JSON de respuesta
         result = {
-            "id": str(user_id),
+            "id": str(contact_info["id"]),
             "fullName": contact_info.get("name", ""),
             "ci": contact_info.get("vat", ""),
             "phone": contact_info.get("mobile", ""),
@@ -603,7 +591,6 @@ async def search_user(request: Request, token_payload: dict = Depends(verify_tok
         raise http_err
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
-
 
 
 
