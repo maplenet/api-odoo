@@ -503,7 +503,9 @@ async def search_contact(request: Request, token_payload: dict = Depends(verify_
     Requiere un token válido y que el usuario que consulta sea interno.
     
     Valida que exista una factura pagada para el contacto y que la fecha actual esté dentro de
-    30 días desde la fecha de emisión. Devuelve un JSON con:
+    30 días desde la fecha de emisión. Además, se verifica que el contacto no esté asociado a ningún usuario.
+    
+    Devuelve un JSON con:
       - id: id del contacto (en formato string)
       - fullName: nombre completo del contacto
       - ci: campo 'vat' del contacto (CI)
@@ -515,7 +517,7 @@ async def search_contact(request: Request, token_payload: dict = Depends(verify_
         # Conectar a Odoo
         conn = get_odoo_connection()
 
-        # Verificar que el usuario que consulta sea interno
+        # Verificar que el usuario que hace la consulta sea interno
         token_user_id = token_payload.get("user_id")
         user_info = execute_odoo_method(
             conn, 'res.users', 'read', [[token_user_id], ['groups_id']]
@@ -539,7 +541,7 @@ async def search_contact(request: Request, token_payload: dict = Depends(verify_
         if not email:
             raise HTTPException(status_code=400, detail="El campo 'email' es obligatorio.")
 
-        # Buscar el contacto por email en Odoo (en lugar de buscar un usuario)
+        # Buscar el contacto por email en Odoo
         contacts = execute_odoo_method(
             conn, 'res.partner', 'search_read',
             [[('email', '=', email)]],
@@ -548,6 +550,15 @@ async def search_contact(request: Request, token_payload: dict = Depends(verify_
         if not contacts:
             raise HTTPException(status_code=404, detail="Contacto no encontrado.")
         contact_info = contacts[0]
+
+        # Verificar que el contacto NO esté asociado a ningún usuario
+        associated_users = execute_odoo_method(
+            conn, 'res.users', 'search_read',
+            [[('partner_id', '=', contact_info["id"])]],
+            {'fields': ['id']}
+        )
+        if associated_users:
+            raise HTTPException(status_code=400, detail="El contacto ya está asociado a un usuario.")
 
         # Verificar que el contacto tenga una factura pagada
         invoices = execute_odoo_method(
@@ -576,7 +587,7 @@ async def search_contact(request: Request, token_payload: dict = Depends(verify_
             raise HTTPException(status_code=500, detail="No se pudo determinar el plan de servicio.")
         planId = invoice_lines[0]['product_id'][0]
 
-        # Preparar y devolver el JSON de respuesta
+        # Preparar la respuesta con la información requerida
         result = {
             "id": str(contact_info["id"]),
             "fullName": contact_info.get("name", ""),
@@ -591,7 +602,6 @@ async def search_contact(request: Request, token_payload: dict = Depends(verify_
         raise http_err
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
-
 
 
 
