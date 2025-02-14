@@ -8,6 +8,7 @@ app = FastAPI()
 # CORS Configuration
 origins = [
     "http://192.168.10.200:4321",
+    "http://192.168.10.200:5173",
     "http://192.168.10.200:8000",
     "http://localhost:4321",
     "https://maplenet-api.com",

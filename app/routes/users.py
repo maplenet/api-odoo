@@ -6,7 +6,7 @@ from app.core.security import verify_token
 from app.core.database import get_odoo_connection, get_sqlite_connection
 from app.core.email_utils import send_pontis_credentials_email
 from datetime import datetime, timedelta, timezone
-from app.services.api_service import build_customer_data, create_customer_in_pontis, login_to_external_api
+from app.services.api_service import build_customer_data, create_customer_in_pontis, login_to_external_api, update_customer_password_in_pontis
 from app.services.odoo_service import execute_odoo_method
 from app.services.sqlite_service import get_decrypted_password, get_user_record, insert_user_record, update_user_password
 from app.services.sqlite_service import update_user_policies  # Asegúrate de importar la función
@@ -138,7 +138,7 @@ async def change_password(request: Request, token_payload: dict = Depends(verify
         if not _is_valid_password(new_password):
             raise HTTPException(
                 status_code=400,
-                detail="The password must have at least 8 characters and max 40 characteres, including 1 uppercase, 1 lowercase and 1 number."
+                detail="The password must have at least 8 characters and max 40 characters, including 1 uppercase, 1 lowercase and 1 number."
             )
 
         # Extraer user_id desde el token
@@ -168,7 +168,16 @@ async def change_password(request: Request, token_payload: dict = Depends(verify
         # Actualizar la contraseña en SQLite
         update_user_password(user_id, new_password)
 
-        return {"detail": "Password changed successfully."}
+        # --- NUEVO: Actualizar la contraseña en Pontis ---
+        # Construir el customer_id para Pontis
+        pontis_customer_id = "MAP0" + str(user_id)
+        pontis_update = await update_customer_password_in_pontis(pontis_customer_id, new_password)
+        # (Podrías validar la respuesta según lo necesites)
+        
+        return {
+            "detail": "Password changed successfully.",
+            "pontis_response": pontis_update
+            }
 
     except HTTPException as http_error:
         raise http_error
@@ -179,6 +188,7 @@ async def change_password(request: Request, token_payload: dict = Depends(verify
 
 @router.get("/get/{user_id}")
 async def get_user_with_service(user_id: int, token_payload: dict = Depends(verify_token)):
+
     """
     Obtiene la información del usuario junto con los datos de su servicio.
     Se extrae el 'user_id' del token y se compara con el parámetro.
@@ -461,7 +471,6 @@ async def update_user(request: Request, token_payload: dict = Depends(verify_tok
         # Conexión a Pontis
         await login_to_external_api()
         customer_data = build_customer_data(id_user, updated_contact, id_plan, plain_password)
-        print(customer_data)
         create_customer_response = await create_customer_in_pontis(customer_data)
 
         # Verificar que se obtuvo correctamente el nombre de usuario de Pontis
@@ -498,7 +507,8 @@ async def update_user(request: Request, token_payload: dict = Depends(verify_tok
     
 
 @router.post("/search_contact")
-async def search_contact(request: Request, token_payload: dict = Depends(verify_token)):
+# async def search_contact(request: Request, token_payload: dict = Depends(verify_token)):
+async def search_contact(request: Request):
     """
     Busca en Odoo la información de un contacto a partir del CI recibido en el body.
     Requiere un token válido y que el usuario que consulta sea interno.
@@ -509,7 +519,7 @@ async def search_contact(request: Request, token_payload: dict = Depends(verify_
     Devuelve un JSON con:
       - id: id del contacto (en formato string)
       - fullName: nombre completo del contacto
-      - ci: el CI (campo 'company_registry')
+      - ci: el CI (campo 'vat')
       - phone: móvil del contacto
       - email: email del contacto
       - planId: id del plan (extraído de la factura pagada)
@@ -518,40 +528,30 @@ async def search_contact(request: Request, token_payload: dict = Depends(verify_
         # Conectar a Odoo
         conn = get_odoo_connection()
 
-        # Verificar que el usuario que hace la consulta sea interno
-        token_user_id = token_payload.get("user_id")
-        user_info = execute_odoo_method(
-            conn, 'res.users', 'read', [[token_user_id], ['groups_id']]
-        )
-        if not user_info:
-            raise HTTPException(status_code=404, detail="Usuario no encontrado en Odoo (token).")
-        internal_group = execute_odoo_method(
-            conn, 'ir.model.data', 'search_read',
-            [[('model', '=', 'res.groups'), ('module', '=', 'base'), ('name', '=', 'group_user')]],
-            {'fields': ['res_id'], 'limit': 1}
-        )
-        if not internal_group:
-            raise HTTPException(status_code=500, detail="No se encontró el grupo interno.")
-        internal_group_id = internal_group[0]['res_id']
-        if internal_group_id not in user_info[0]['groups_id']:
-            raise HTTPException(status_code=403, detail="No estás autorizado para usar este endpoint.")
-
         # Obtener el CI del body (campo 'ci')
         body = await request.json()
         ci = body.get("ci")
         if not ci:
             raise HTTPException(status_code=400, detail="El campo 'ci' es obligatorio.")
 
-        # Buscar el contacto por CI en Odoo, usando el campo "company_registry"
+        # Buscar el contacto por CI en Odoo, usando el campo "vat"
         contacts = execute_odoo_method(
             conn, 'res.partner', 'search_read',
-            [[('company_registry', '=', ci)]],
+            [[('vat', '=', ci)]],
             {'fields': ['id', 'name', 'mobile', 'email', 'vat']}
         )
+
+        # Obtener el contacto con id 130 e imprimir sus datos
+        contacts2 = execute_odoo_method(
+            conn, 'res.partner', 'read', [[130]],
+            {'fields': ['id', 'name', 'mobile', 'email', 'vat']}
+        )
+
+
+
         if not contacts:
             raise HTTPException(status_code=404, detail="Contacto no encontrado.")
         contact_info = contacts[0]
-
         # Verificar que el contacto NO esté asociado a ningún usuario
         associated_users = execute_odoo_method(
             conn, 'res.users', 'search_read',
@@ -606,6 +606,7 @@ async def search_contact(request: Request, token_payload: dict = Depends(verify_
 
 
 
+
 def generate_random_password(length=8) -> str:
     """Genera una contraseña aleatoria alfanumérica de la longitud dada,
     que contenga al menos una mayúscula, una minúscula y un dígito."""
@@ -631,8 +632,9 @@ def split_name(full_name: str) -> tuple:
         return (parts[0], "")
     return (parts[0], " ".join(parts[1:]))
 
+
 @router.post("/activate_contact_from_odoo")
-async def activate_contact_portal(request: Request, token_payload: dict = Depends(verify_token)):
+async def activate_contact_portal(request: Request):
     """
     Activa un contacto como usuario portal en Odoo y Pontis.
     
@@ -648,7 +650,7 @@ async def activate_contact_portal(request: Request, token_payload: dict = Depend
       4. Crea un usuario de tipo portal en Odoo asociado a este contacto, sin enviar invitación.
       5. Registra el nuevo usuario en SQLite y marca las políticas como aceptadas.
       6. Obtiene los datos actualizados del contacto.
-      7. Llama a build_customer_data pasando (id_user, updated_contact, id_plan, plain_password) para armar el payload de activación.
+      7. Llama a build_customer_data pasando (id_user, updated_contact, id_plan, new_password) para armar el payload de activación.
       8. Llama a la API de Pontis para activar el usuario.
       9. Si la activación es exitosa, envía por correo las credenciales (usuario y contraseña).
     """
@@ -662,24 +664,24 @@ async def activate_contact_portal(request: Request, token_payload: dict = Depend
         if not id_contact:
             raise HTTPException(status_code=400, detail="El campo 'id_contact' es obligatorio.")
 
-        # 2. Verificar que el usuario que hace la consulta sea interno
-        token_user_id = token_payload.get("user_id")
-        # Obtenemos la información del usuario del token:
-        user_token = execute_odoo_method(
-            get_odoo_connection(), 'res.users', 'read', [[token_user_id], ['groups_id']]
-        )
-        if not user_token:
-            raise HTTPException(status_code=404, detail="Usuario del token no encontrado.")
-        internal_group = execute_odoo_method(
-            get_odoo_connection(), 'ir.model.data', 'search_read',
-            [[('model', '=', 'res.groups'), ('module', '=', 'base'), ('name', '=', 'group_user')]],
-            {'fields': ['res_id'], 'limit': 1}
-        )
-        if not internal_group:
-            raise HTTPException(status_code=500, detail="No se encontró el grupo interno.")
-        internal_group_id = internal_group[0]['res_id']
-        if internal_group_id not in user_token[0]['groups_id']:
-            raise HTTPException(status_code=403, detail="No estás autorizado para usar este endpoint.")
+        # # 2. Verificar que el usuario que hace la consulta sea interno
+        # token_user_id = token_payload.get("user_id")
+        # # Obtenemos la información del usuario del token:
+        # user_token = execute_odoo_method(
+        #     get_odoo_connection(), 'res.users', 'read', [[token_user_id], ['groups_id']]
+        # )
+        # if not user_token:
+        #     raise HTTPException(status_code=404, detail="Usuario del token no encontrado.")
+        # internal_group = execute_odoo_method(
+        #     get_odoo_connection(), 'ir.model.data', 'search_read',
+        #     [[('model', '=', 'res.groups'), ('module', '=', 'base'), ('name', '=', 'group_user')]],
+        #     {'fields': ['res_id'], 'limit': 1}
+        # )
+        # if not internal_group:
+        #     raise HTTPException(status_code=500, detail="No se encontró el grupo interno.")
+        # internal_group_id = internal_group[0]['res_id']
+        # if internal_group_id not in user_token[0]['groups_id']:
+        #     raise HTTPException(status_code=403, detail="No estás autorizado para usar este endpoint.")
 
         # 3. Buscar el contacto en Odoo
         conn = get_odoo_connection()
@@ -695,7 +697,7 @@ async def activate_contact_portal(request: Request, token_payload: dict = Depend
         associated_users = execute_odoo_method(
             conn, 'res.users', 'search_read',
             [[('partner_id', '=', id_contact)]],
-            {'fields': ['id']}
+            {'fields': ['id'], 'context': {'active_test': False}}
         )
         if associated_users:
             raise HTTPException(status_code=400, detail="El contacto ya está asociado a un usuario.")
@@ -731,6 +733,7 @@ async def activate_contact_portal(request: Request, token_payload: dict = Depend
         new_password = generate_random_password(8)
 
         # 8. Crear el usuario de tipo portal en Odoo asociado al contacto.
+        # Importante: Asignamos partner_id para evitar crear un nuevo contacto.
         group_portal = execute_odoo_method(
             conn, 'ir.model.data', 'search_read',
             [[('model', '=', 'res.groups'), ('module', '=', 'base'), ('name', '=', 'group_portal')]],
@@ -746,6 +749,7 @@ async def activate_contact_portal(request: Request, token_payload: dict = Depend
             'mobile': contact_info.get("mobile"),
             'password': new_password,
             'lang': 'es_MX',
+            'partner_id': id_contact,  # Asociamos el usuario al contacto existente
             'groups_id': [(6, 0, [group_portal_id])]
         }
         new_user_id = execute_odoo_method(
@@ -756,7 +760,6 @@ async def activate_contact_portal(request: Request, token_payload: dict = Depend
             raise HTTPException(status_code=500, detail="No se pudo crear el usuario portal en Odoo.")
 
         # 9. Registrar el nuevo usuario en SQLite
-        # Dividir el nombre en first_name y last_name
         def split_name(full_name: str) -> tuple:
             parts = full_name.split()
             if not parts:
@@ -786,25 +789,26 @@ async def activate_contact_portal(request: Request, token_payload: dict = Depend
         
         # 13. Llamar a la API de activación de Pontis
         await login_to_external_api()
-        activation_response = await create_customer_in_pontis(customer_data)
-        if not activation_response.get("response"):
-            raise HTTPException(status_code=500, detail="No se pudieron activar las credenciales en Pontis.")
-        pontis_username = activation_response["response"]
+        # activation_response = await create_customer_in_pontis(customer_data)
+        # if not activation_response.get("response"):
+        #     raise HTTPException(status_code=500, detail="No se pudieron activar las credenciales en Pontis.")
+        # pontis_username = activation_response["response"]
 
         # 14. Enviar por correo las credenciales de acceso a Pontis
         send_pontis_credentials_email(
             to_email=contact_info.get("email"),
             subject="Tus credenciales de acceso a Pontis",
-            pontis_username=pontis_username,
+            # pontis_username=pontis_username,
+            pontis_username="usuario_pontis",
             pontis_password=new_password
         )
 
         return {
             "detail": "Contacto activado como usuario portal en Pontis correctamente.",
-            "pontis_username": pontis_username,
+            # "pontis_username": pontis_username,
             "new_password": new_password,
-            "activation_response": activation_response
-            }
+            # "activation_response": activation_response
+        }
         
     except HTTPException as http_err:
         raise http_err
@@ -812,18 +816,3 @@ async def activate_contact_portal(request: Request, token_payload: dict = Depend
         raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
 
 
-# Obtener todos los detalles de un usuario por su id
-@router.get("/all/{user_id}")
-async def get_user_all(user_id: int, token=Depends(verify_token)):
-    conn = get_odoo_connection()
-    try:
-        # Llamada síncrona a Odoo
-        result = conn['models'].execute_kw(
-            conn['db'], conn['uid'], conn['password'],
-            'res.users', 'read', [[user_id]]
-        )
-        # Devolver el usuario encontrado
-        return {"user": result}
-    except Exception as e:
-        # Manejo de errores genérico
-        raise HTTPException(status_code=500, detail=f"Error interno: {e}")

@@ -8,6 +8,7 @@ from app.core.email_validation import is_valid_email
 from app.core.security import create_access_token, create_password_reset_token, verify_token, oauth2_scheme, blacklisted_tokens
 from app.core.database import get_odoo_connection
 from app.routes.users import _is_valid_password
+from app.services.api_service import update_customer_password_in_pontis
 from app.services.sqlite_service import update_user_password
 from app.services.token_service import get_token_record, mark_token_as_used, revoke_token, store_token
 from app.services.verification_service import handle_verification_request, verify_code_and_email
@@ -278,7 +279,9 @@ async def forgot_password(request: Request):
         store_token(reset_token, user_id, "password_reset", expires_at)
 
         # Construir el enlace de restablecimiento (ajusta la URL a tu frontend)
-        reset_link = f"https://maplenet.com.bo/reset-password?token={reset_token}"
+        # reset_link = f"https://maplenet.com.bo/reset-password?token={reset_token}"
+        reset_link = f"http://192.168.10.200:4321/reset-password?token={reset_token}"
+
         send_reset_password_email(
             to_email=email,
             subject="Recupera tu contraseña",
@@ -296,7 +299,7 @@ async def forgot_password(request: Request):
 async def reset_password(request: Request):
     """
     Recibe el token de restablecimiento y las nuevas contraseñas, valida el token,
-    actualiza la contraseña en Odoo y en la base de datos 'users',
+    actualiza la contraseña en Odoo, en la base de datos 'users' y en Pontis,
     y marca el token como usado.
     """
     try:
@@ -350,10 +353,17 @@ async def reset_password(request: Request):
         # Actualizar la contraseña en SQLite
         update_user_password(user_id, new_password)
 
+        # Actualizar la contraseña en Pontis
+        pontis_customer_id = "MAP0" + str(user_id)
+        response_pontis  = await update_customer_password_in_pontis(pontis_customer_id, new_password)
+
         # Marcar el token de restablecimiento como usado
         mark_token_as_used(reset_token)
 
-        return {"detail": "Contraseña restablecida exitosamente."}
+        return {
+            "detail": "Contraseña restablecida exitosamente.",
+            "pontis_response": response_pontis
+            }
 
     except HTTPException as http_error:
         raise http_error
