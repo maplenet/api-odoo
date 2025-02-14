@@ -499,7 +499,7 @@ async def update_user(request: Request, token_payload: dict = Depends(verify_tok
 @router.post("/search_contact")
 async def search_contact(request: Request, token_payload: dict = Depends(verify_token)):
     """
-    Busca en Odoo la información de un contacto a partir del correo recibido en el body.
+    Busca en Odoo la información de un contacto a partir del CI recibido en el body.
     Requiere un token válido y que el usuario que consulta sea interno.
     
     Valida que exista una factura pagada para el contacto y que la fecha actual esté dentro de
@@ -508,7 +508,7 @@ async def search_contact(request: Request, token_payload: dict = Depends(verify_
     Devuelve un JSON con:
       - id: id del contacto (en formato string)
       - fullName: nombre completo del contacto
-      - ci: campo 'vat' del contacto (CI)
+      - ci: el CI (campo 'company_registry')
       - phone: móvil del contacto
       - email: email del contacto
       - planId: id del plan (extraído de la factura pagada)
@@ -535,16 +535,16 @@ async def search_contact(request: Request, token_payload: dict = Depends(verify_
         if internal_group_id not in user_info[0]['groups_id']:
             raise HTTPException(status_code=403, detail="No estás autorizado para usar este endpoint.")
 
-        # Obtener el email del body
+        # Obtener el CI del body (campo 'ci')
         body = await request.json()
-        email = body.get("email")
-        if not email:
-            raise HTTPException(status_code=400, detail="El campo 'email' es obligatorio.")
+        ci = body.get("ci")
+        if not ci:
+            raise HTTPException(status_code=400, detail="El campo 'ci' es obligatorio.")
 
-        # Buscar el contacto por email en Odoo
+        # Buscar el contacto por CI en Odoo, usando el campo "company_registry"
         contacts = execute_odoo_method(
             conn, 'res.partner', 'search_read',
-            [[('email', '=', email)]],
+            [[('company_registry', '=', ci)]],
             {'fields': ['id', 'name', 'mobile', 'email', 'vat']}
         )
         if not contacts:
@@ -587,7 +587,7 @@ async def search_contact(request: Request, token_payload: dict = Depends(verify_
             raise HTTPException(status_code=500, detail="No se pudo determinar el plan de servicio.")
         planId = invoice_lines[0]['product_id'][0]
 
-        # Preparar la respuesta con la información requerida
+        # Preparar el JSON de respuesta con la estructura solicitada
         result = {
             "id": str(contact_info["id"]),
             "fullName": contact_info.get("name", ""),
@@ -602,7 +602,6 @@ async def search_contact(request: Request, token_payload: dict = Depends(verify_
         raise http_err
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
-
 
 
 
