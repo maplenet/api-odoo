@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, Request
+from fastapi import APIRouter, HTTPException, Depends, Request, Query
 import re
 from app.core.security import verify_token
 from app.core.database import get_odoo_connection, get_sqlite_connection
@@ -492,6 +492,122 @@ async def update_user(request: Request, token_payload: dict = Depends(verify_tok
         raise http_error
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
+    
+
+@router.post("/search_user")
+async def search_user(request: Request, token_payload: dict = Depends(verify_token)):
+    """
+    Busca en Odoo la información de un usuario y su contacto a partir del correo recibido en el body.
+    Requiere un token válido y que el usuario que consulta sea interno.
+    
+    Valida que exista una factura pagada para el contacto y que la fecha actual esté dentro de
+    30 días desde la fecha de emisión. Devuelve un JSON con:
+      - id: id del usuario
+      - fullName: nombre completo del contacto
+      - ci: campo 'vat' del contacto (CI)
+      - phone: móvil del contacto
+      - email: email del contacto
+      - planId: id del plan (extraído de la factura pagada)
+    """
+    try:
+        # Conectar a Odoo
+        conn = get_odoo_connection()
+
+        # Verificar que el usuario que hace la consulta sea interno
+        token_user_id = token_payload.get("user_id")
+        user_info = execute_odoo_method(
+            conn, 'res.users', 'read', [[token_user_id], ['groups_id']]
+        )
+        if not user_info:
+            raise HTTPException(status_code=404, detail="Usuario no encontrado en Odoo (token).")
+        internal_group = execute_odoo_method(
+            conn, 'ir.model.data', 'search_read',
+            [[('model', '=', 'res.groups'), ('module', '=', 'base'), ('name', '=', 'group_user')]],
+            {'fields': ['res_id'], 'limit': 1}
+        )
+        if not internal_group:
+            raise HTTPException(status_code=500, detail="No se encontró el grupo interno.")
+        internal_group_id = internal_group[0]['res_id']
+        if internal_group_id not in user_info[0]['groups_id']:
+            raise HTTPException(status_code=403, detail="No estás autorizado para usar este endpoint.")
+
+        # Obtener el email del body
+        body = await request.json()
+        email = body.get("email")
+        if not email:
+            raise HTTPException(status_code=400, detail="El campo 'email' es obligatorio.")
+
+        # Buscar el usuario por email en Odoo
+        users = execute_odoo_method(
+            conn, 'res.users', 'search_read',
+            [[('email', '=', email)]],
+            {'fields': ['id', 'name', 'login', 'partner_id']}
+        )
+        if not users:
+            raise HTTPException(status_code=404, detail="Usuario no encontrado.")
+        user_found = users[0]
+        user_id = user_found["id"]
+
+        # Obtener el contacto asociado (solicitamos también el campo 'vat' para el CI)
+        partner_ids = user_found.get("partner_id")
+        if not partner_ids or not partner_ids[0]:
+            raise HTTPException(status_code=404, detail="El usuario no tiene contacto asociado.")
+        partner_id = partner_ids[0]
+        contact = execute_odoo_method(
+            conn, 'res.partner', 'read', [[partner_id]],
+            {'fields': ['id', 'name', 'mobile', 'email', 'vat']}
+        )
+        if not contact:
+            raise HTTPException(status_code=404, detail="Contacto no encontrado.")
+        contact_info = contact[0]
+
+        # Verificar que el usuario tenga una factura pagada
+        invoices = execute_odoo_method(
+            conn, 'account.move', 'search_read',
+            [[('partner_id', '=', partner_id), ('payment_state', '=', 'paid')]],
+            {'fields': ['invoice_date', 'invoice_line_ids'], 'order': 'invoice_date desc', 'limit': 1}
+        )
+        if not invoices:
+            raise HTTPException(status_code=404, detail="No se encontró factura pagada para este usuario.")
+        invoice = invoices[0]
+        invoice_date_str = invoice.get('invoice_date')
+        if not invoice_date_str:
+            raise HTTPException(status_code=500, detail="La factura no tiene fecha de emisión.")
+        invoice_date = datetime.strptime(invoice_date_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        expiry_date = invoice_date + timedelta(days=30)
+        now = datetime.now(timezone.utc)
+        if now < invoice_date or now > expiry_date:
+            raise HTTPException(status_code=400, detail="El período de servicio ha expirado.")
+
+        # Obtener el planId desde la factura: leer la primera línea de la factura
+        invoice_lines = execute_odoo_method(
+            conn, 'account.move.line', 'read', [invoice['invoice_line_ids']],
+            {'fields': ['product_id']}
+        )
+        if not invoice_lines or not invoice_lines[0].get('product_id'):
+            raise HTTPException(status_code=500, detail="No se pudo determinar el plan de servicio.")
+        planId = invoice_lines[0]['product_id'][0]
+
+        # Preparar el JSON de respuesta
+        result = {
+            "id": str(user_id),
+            "fullName": contact_info.get("name", ""),
+            "ci": contact_info.get("vat", ""),
+            "phone": contact_info.get("mobile", ""),
+            "email": contact_info.get("email", ""),
+            "planId": planId
+        }
+        return result
+
+    except HTTPException as http_err:
+        raise http_err
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
+
+
+
+
+
 
 
 # Obtener todos los detalles de un usuario por su id
