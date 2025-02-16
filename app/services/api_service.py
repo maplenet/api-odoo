@@ -65,18 +65,18 @@ def build_customer_data(id_user, contact_data, id_plan, password):
     ])
 
     if id_plan == 11:
-        subscribe_service_list.append({
-            "effectiveDt": effective_dt,
-            "expireDt": expire_dt,
-            "serviceMenu": {"serviceMenuId": "6212"} 
-        })
-
-    if id_plan == 12:
-        subscribe_service_list.append({
-            "effectiveDt": effective_dt,
-            "expireDt": expire_dt,
-            "serviceMenu": {"serviceMenuId": "6294"}  
-        })
+        subscribe_service_list.extend([
+            {
+                "effectiveDt": effective_dt,
+                "expireDt": expire_dt,
+                "serviceMenu": {"serviceMenuId": "6212"}  
+            },
+            {
+                "effectiveDt": effective_dt,
+                "expireDt": expire_dt,
+                "serviceMenu": {"serviceMenuId": "6294"} 
+            }
+        ])
 
     if id_plan == 13:
         subscribe_service_list.extend([
@@ -88,7 +88,7 @@ def build_customer_data(id_user, contact_data, id_plan, password):
             {
                 "effectiveDt": effective_dt,
                 "expireDt": expire_dt,
-                "serviceMenu": {"serviceMenuId": "6212"} 
+                "serviceMenu": {"serviceMenuId": "6294"} 
             }
         ])
 
@@ -102,12 +102,12 @@ def build_customer_data(id_user, contact_data, id_plan, password):
             {
                 "effectiveDt": effective_dt,
                 "expireDt": expire_dt,
-                "serviceMenu": {"serviceMenuId": "6212"}  
+                "serviceMenu": {"serviceMenuId": "6294"}  
             },
             {
                 "effectiveDt": effective_dt,
                 "expireDt": expire_dt,
-                "serviceMenu": {"serviceMenuId": "6217"}  
+                "serviceMenu": {"serviceMenuId": "6293"}  
             }
         ])
 

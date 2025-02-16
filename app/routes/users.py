@@ -507,8 +507,8 @@ async def update_user(request: Request, token_payload: dict = Depends(verify_tok
     
 
 @router.post("/search_contact")
-# async def search_contact(request: Request, token_payload: dict = Depends(verify_token)):
-async def search_contact(request: Request):
+async def search_contact(request: Request, token_payload: dict = Depends(verify_token)):
+# async def search_contact(request: Request):
     """
     Busca en Odoo la información de un contacto a partir del CI recibido en el body.
     Requiere un token válido y que el usuario que consulta sea interno.
@@ -634,7 +634,7 @@ def split_name(full_name: str) -> tuple:
 
 
 @router.post("/activate_contact_from_odoo")
-async def activate_contact_portal(request: Request):
+async def activate_contact_portal(request: Request, token_payload: dict = Depends(verify_token)):
     """
     Activa un contacto como usuario portal en Odoo y Pontis.
     
@@ -789,25 +789,25 @@ async def activate_contact_portal(request: Request):
         
         # 13. Llamar a la API de activación de Pontis
         await login_to_external_api()
-        # activation_response = await create_customer_in_pontis(customer_data)
-        # if not activation_response.get("response"):
-        #     raise HTTPException(status_code=500, detail="No se pudieron activar las credenciales en Pontis.")
-        # pontis_username = activation_response["response"]
+        activation_response = await create_customer_in_pontis(customer_data)
+        if not activation_response.get("response"):
+            raise HTTPException(status_code=500, detail="No se pudieron activar las credenciales en Pontis.")
+        pontis_username = activation_response["response"]
 
         # 14. Enviar por correo las credenciales de acceso a Pontis
         send_pontis_credentials_email(
             to_email=contact_info.get("email"),
             subject="Tus credenciales de acceso a Pontis",
-            # pontis_username=pontis_username,
-            pontis_username="usuario_pontis",
+            pontis_username=pontis_username,
+            # pontis_username="usuario_pontis",
             pontis_password=new_password
         )
 
         return {
             "detail": "Contacto activado como usuario portal en Pontis correctamente.",
-            # "pontis_username": pontis_username,
+            "pontis_username": pontis_username,
             "new_password": new_password,
-            # "activation_response": activation_response
+            "activation_response": activation_response
         }
         
     except HTTPException as http_err:
