@@ -196,7 +196,7 @@ async def update_customer_password_in_pontis(customer_id: str, new_password: str
     :param new_password: La nueva contraseña en texto plano.
     :return: La respuesta JSON de la API de Pontis.
     """
-    url = f"http://18.117.185.30:3000/api/customers/{customer_id}"
+    url = f"https://api-pontis.henryqh.me/api/customers/{customer_id}"
     payload = {
         "customerAccount": {
             "password": new_password
