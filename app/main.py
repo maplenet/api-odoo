@@ -14,6 +14,7 @@ origins = [
     "https://maplenet-api.com",
     "https://maplenet.com.bo",
     "http://192.168.10.227",
+    "https://portal-activaciones.henryqh.me/",
 ]
 app.add_middleware(
     CORSMiddleware,

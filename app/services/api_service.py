@@ -8,7 +8,8 @@ async def login_to_external_api():
     """
     Realiza una solicitud HTTP POST a la API externa para autenticarse.
     """
-    url = "http://18.117.185.30:3000/api/auth/login"
+    # url = "http://18.117.185.30:3000/api/auth/login"
+    url = "https://api-pontis.henryqh.me/api/auth/login"
     payload = {
         "customer_id": "subop_maplenet1",
         "password": "s8Xh5671O9xR"
@@ -167,7 +168,7 @@ async def create_customer_in_pontis(customer_data):
     :param customer_data: Datos del cliente para crear.
     :return: Respuesta de la API.
     """
-    url = "http://18.117.185.30:3000/api/customers/create"
+    url = "https://api-pontis.henryqh.me/api/customers/create"
     headers = {
         "Content-Type": "application/json"
     }
