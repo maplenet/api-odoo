@@ -50,6 +50,11 @@ def build_customer_data(id_user, contact_data, id_plan, password):
     subscribe_service_list.extend([
         {
             "effectiveDt": effective_dt,
+            "expireDt": expire_dt,
+            "serviceMenu": {"serviceMenuId": "6212"}  
+        },
+        {
+            "effectiveDt": effective_dt,
             "expireDt": "",
             "serviceMenu": {"serviceMenuId": "6213"}  
         },
@@ -65,13 +70,8 @@ def build_customer_data(id_user, contact_data, id_plan, password):
         }
     ])
 
-    if id_plan == 11:
+    if id_plan == 6:
         subscribe_service_list.extend([
-            {
-                "effectiveDt": effective_dt,
-                "expireDt": expire_dt,
-                "serviceMenu": {"serviceMenuId": "6212"}  
-            },
             {
                 "effectiveDt": effective_dt,
                 "expireDt": expire_dt,
@@ -79,7 +79,7 @@ def build_customer_data(id_user, contact_data, id_plan, password):
             }
         ])
 
-    if id_plan == 13:
+    if id_plan == 8:
         subscribe_service_list.extend([
             {
                 "effectiveDt": effective_dt,
@@ -93,8 +93,13 @@ def build_customer_data(id_user, contact_data, id_plan, password):
             }
         ])
 
-    if id_plan == 19:
+    if id_plan == 9:
         subscribe_service_list.extend([
+            {
+                "effectiveDt": effective_dt,
+                "expireDt": expire_dt,
+                "serviceMenu": {"serviceMenuId": "6217"}  
+            },
             {
                 "effectiveDt": effective_dt,
                 "expireDt": expire_dt,
@@ -104,19 +109,24 @@ def build_customer_data(id_user, contact_data, id_plan, password):
                 "effectiveDt": effective_dt,
                 "expireDt": expire_dt,
                 "serviceMenu": {"serviceMenuId": "6294"}  
-            },
-            {
-                "effectiveDt": effective_dt,
-                "expireDt": expire_dt,
-                "serviceMenu": {"serviceMenuId": "6293"}  
             }
         ])
 
+    if id_plan == 6:
+        autoProvCountStationary = "1"
+        autoProvisionCountMobile = "2"
+    elif id_plan in [8, 9]:
+        autoProvCountStationary = "2"
+        autoProvisionCountMobile = "3"
+    else:
+        autoProvCountStationary = "2"
+        autoProvisionCountMobile = "3"
+ 
     customer_data = {
         "customer": {
-            "autoProvCountStationary": "4",
+            "autoProvCountStationary": autoProvCountStationary,
             "autoProvisionCount": "0",
-            "autoProvisionCountMobile": "8",
+            "autoProvisionCountMobile": autoProvisionCountMobile,
             "customerId": "MAP0"+str(id_user),
             "favoritesEnabled": "Y",
             "firstName": contact.get("name", ""),
