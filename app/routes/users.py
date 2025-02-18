@@ -227,9 +227,9 @@ async def get_user_with_service(user_id: int, token_payload: dict = Depends(veri
             odoo_conn['db'], odoo_conn['uid'], odoo_conn['password'],
             'account.move', 'search_read',
             [[
-                ['partner_id', '=', partner_id],
-                ['payment_state', '=', 'paid'],
-                ['vr_estado', '=', 'send_and_confirm']
+                ('partner_id', '=', partner_id),
+                ('payment_state', '=', 'paid'),
+                '|', ('vr_estado', '=', 'send_and_confirm'), ('vr_estado', '=', 'pending')
             ]],
             {
                 'fields': ['id', 'invoice_date', 'amount_total', 'invoice_line_ids'],
@@ -237,6 +237,21 @@ async def get_user_with_service(user_id: int, token_payload: dict = Depends(veri
                 'limit': 1
             }
         )
+
+        #invoice = odoo_conn['models'].execute_kw(
+        #    odoo_conn['db'], odoo_conn['uid'], odoo_conn['password'],
+        #    'account.move', 'search_read',
+        #    [[
+        #        ['partner_id', '=', partner_id],
+        #        ['payment_state', '=', 'paid'],
+        #        ['vr_estado', '=', 'send_and_confirm']
+        #    ]],
+        #    {
+        #        'fields': ['id', 'invoice_date', 'amount_total', 'invoice_line_ids'],
+        #        'order': 'invoice_date desc',
+        #        'limit': 1
+        #    }
+        #)
         service = {}
         if invoice:
             invoice = invoice[0]
@@ -290,15 +305,16 @@ async def get_user_with_service(user_id: int, token_payload: dict = Depends(veri
 
 
 @router.patch("/update_user")
-async def update_user(request: Request, token_payload: dict = Depends(verify_token)):
+# async def update_user(request: Request, token_payload: dict = Depends(verify_token)):
+async def update_user(request: Request):
     """
     Actualiza los datos del usuario, crea una factura y registra el pago.
     Se requiere que el 'id_usuario' enviado en el body coincida con el 'user_id' del token.
     Se realizan múltiples validaciones sobre los datos ingresados.
     """
     try:
-        # Obtener el user_id del token y comparar con el id_usuario del body
-        token_user_id = token_payload.get("user_id")
+        # # Obtener el user_id del token y comparar con el id_usuario del body
+        # token_user_id = token_payload.get("user_id")
         
         body = await request.json()
         
@@ -309,8 +325,13 @@ async def update_user(request: Request, token_payload: dict = Depends(verify_tok
         except (TypeError, ValueError):
             raise HTTPException(status_code=400, detail="Los campos 'id_plan' e 'id_usuario' deben ser números.")
         
-        if id_user != token_user_id:
-            raise HTTPException(status_code=403, detail="No estás autorizado para actualizar otro usuario.")
+        num_ref = body.get("num_ref")
+	
+        if not num_ref or not isinstance(num_ref, str):
+           raise HTTPException(status_code=400, detail="El campo 'num_ref' es obligatorio y debe ser una cadena.")
+        
+        # if id_user != token_user_id:
+        #     raise HTTPException(status_code=403, detail="No estás autorizado para actualizar otro usuario.")
         
         # Extraer y validar datos opcionales
         legal_Name = body.get("razon_social")
@@ -439,6 +460,7 @@ async def update_user(request: Request, token_payload: dict = Depends(verify_tok
             'vr_metodo_pago': id_payment_method,
             'vr_nro_tarjeta': num_card,
             'vr_tipo_documento_identidad': type_doc,
+	    'payment_reference': num_ref,
             'invoice_line_ids': [invoice_line],
         }
         
@@ -471,12 +493,14 @@ async def update_user(request: Request, token_payload: dict = Depends(verify_tok
         # Conexión a Pontis
         await login_to_external_api()
         customer_data = build_customer_data(id_user, updated_contact, id_plan, plain_password)
-        create_customer_response = await create_customer_in_pontis(customer_data)
 
-        # Verificar que se obtuvo correctamente el nombre de usuario de Pontis
-        if not create_customer_response.get("response"):
-            raise HTTPException(status_code=500, detail="No se obtuvieron credenciales de Pontis.")
-        pontis_username = create_customer_response["response"]
+        # -------------------------------------------------------------------------
+        # create_customer_response = await create_customer_in_pontis(customer_data)
+
+        # # Verificar que se obtuvo correctamente el nombre de usuario de Pontis
+        # if not create_customer_response.get("response"):
+        #     raise HTTPException(status_code=500, detail="No se obtuvieron credenciales de Pontis.")
+        # pontis_username = create_customer_response["response"]
 
         # obtenemos el email del usuario desde SQLite
         user_record = get_user_record(id_user)
@@ -486,9 +510,14 @@ async def update_user(request: Request, token_payload: dict = Depends(verify_tok
         send_pontis_credentials_email(
             to_email=email,  # Ajusta: aquí deberías usar el correo del usuario, p.ej. la variable email.
             subject="Tus credenciales de acceso:",
-            pontis_username=pontis_username,
+            # pontis_username=pontis_username,
+            pontis_username="pontis_username",
             pontis_password=plain_password
         )
+
+        print("Credenciales enviadas a", email)
+        # print("user", pontis_username)
+        print("pass", plain_password)
 
         # Actualizar el usuario en SQLite para marcar la aceptación de políticas
         update_user_policies(id_user)
@@ -497,7 +526,7 @@ async def update_user(request: Request, token_payload: dict = Depends(verify_tok
             "detail": "Factura creada y pagada correctamente", 
             "invoice_id": invoice_id, 
             "payment_id": payment_register_id,
-            "res_pontis": create_customer_response
+            # "res_pontis": create_customer_response
         }
         
     except HTTPException as http_error:
@@ -507,7 +536,7 @@ async def update_user(request: Request, token_payload: dict = Depends(verify_tok
     
 
 @router.post("/search_contact")
-async def search_contact(request: Request, token_payload: dict = Depends(verify_token)):
+async def search_contact(request: Request):
 # async def search_contact(request: Request):
     """
     Busca en Odoo la información de un contacto a partir del CI recibido en el body.
@@ -535,9 +564,14 @@ async def search_contact(request: Request, token_payload: dict = Depends(verify_
             raise HTTPException(status_code=400, detail="El campo 'ci' es obligatorio.")
 
         # Buscar el contacto por CI en Odoo, usando el campo "vat"
+        #contacts = execute_odoo_method(
+        #    conn, 'res.partner', 'search_read',
+        #    [[('vat', '=', ci)]],
+        #    {'fields': ['id', 'name', 'mobile', 'email', 'vat']}
+        #)
         contacts = execute_odoo_method(
             conn, 'res.partner', 'search_read',
-            [[('vat', '=', ci)]],
+            [[('email', '=', ci)]],
             {'fields': ['id', 'name', 'mobile', 'email', 'vat']}
         )
 
@@ -634,7 +668,7 @@ def split_name(full_name: str) -> tuple:
 
 
 @router.post("/activate_contact_from_odoo")
-async def activate_contact_portal(request: Request, token_payload: dict = Depends(verify_token)):
+async def activate_contact_portal(request: Request):
     """
     Activa un contacto como usuario portal en Odoo y Pontis.
     
@@ -789,30 +823,31 @@ async def activate_contact_portal(request: Request, token_payload: dict = Depend
         
         # 13. Llamar a la API de activación de Pontis
         await login_to_external_api()
-        activation_response = await create_customer_in_pontis(customer_data)
-        if not activation_response.get("response"):
-            raise HTTPException(status_code=500, detail="No se pudieron activar las credenciales en Pontis.")
-        pontis_username = activation_response["response"]
+
+        # -------------------------------------------------------------------------
+        # activation_response = await create_customer_in_pontis(customer_data)
+        # if not activation_response.get("response"):
+        #     raise HTTPException(status_code=500, detail="No se pudieron activar las credenciales en Pontis.")
+        # pontis_username = activation_response["response"]
 
         # 14. Enviar por correo las credenciales de acceso a Pontis
         send_pontis_credentials_email(
             to_email=contact_info.get("email"),
             subject="Tus credenciales de acceso a Pontis",
-            pontis_username=pontis_username,
-            # pontis_username="usuario_pontis",
+            # pontis_username=pontis_username,
+            pontis_username="usuario_pontis",
             pontis_password=new_password
         )
 
         return {
             "detail": "Contacto activado como usuario portal en Pontis correctamente.",
-            "pontis_username": pontis_username,
+            # "pontis_username": pontis_username,
             "new_password": new_password,
-            "activation_response": activation_response
+            # "activation_response": activation_response
         }
         
     except HTTPException as http_err:
         raise http_err
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
-
 
