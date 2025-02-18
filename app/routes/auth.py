@@ -279,8 +279,8 @@ async def forgot_password(request: Request):
         store_token(reset_token, user_id, "password_reset", expires_at)
 
         # Construir el enlace de restablecimiento (ajusta la URL a tu frontend)
-        # reset_link = f"https://maplenet.com.bo/reset-password?token={reset_token}"
-        reset_link = f"http://192.168.10.200:4321/reset-password?token={reset_token}"
+        reset_link = f"https://maplenet.com.bo/reset-password?token={reset_token}"
+        # reset_link = f"http://192.168.10.200:4321/reset-password?token={reset_token}"
 
         send_reset_password_email(
             to_email=email,
@@ -369,3 +369,4 @@ async def reset_password(request: Request):
         raise http_error
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
+        
