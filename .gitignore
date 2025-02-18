@@ -11,3 +11,4 @@ models.py
 query_db.py
 verification.db
 .vscode/
+.env

@@ -17,11 +17,11 @@ COPY . .
 # COPY .env .
 
 # Exponer el puerto en el que la app se ejecutará (Uvicorn por defecto usa el 8000)
-EXPOSE 4444
+EXPOSE 8000
 
 # Ejecuta el script para inicializar la base de datos.
 # Nota: Si la base de datos ya fue creada o deseas ejecutarlo manualmente, puedes omitir esta línea.
-RUN python init_db.py
+# RUN python init_db.py
 
 # Comando para iniciar la aplicación (sin --reload para producción)
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "4444"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0"]
