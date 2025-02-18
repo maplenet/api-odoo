@@ -305,15 +305,26 @@ async def get_user_with_service(user_id: int, token_payload: dict = Depends(veri
 
 
 @router.patch("/update_user")
-async def update_user(request: Request, token_payload: dict = Depends(verify_token)):
+async def update_user(request: Request):
+# ----------------------------------------------------------
+
+# async def update_user(request: Request, token_payload: dict = Depends(verify_token)):
+
+# ----------------------------------------------------------
+
+
     """
     Actualiza los datos del usuario, crea una factura y registra el pago.
     Se requiere que el 'id_usuario' enviado en el body coincida con el 'user_id' del token.
     Se realizan múltiples validaciones sobre los datos ingresados.
     """
     try:
-        # Obtener el user_id del token y comparar con el id_usuario del body
-        token_user_id = token_payload.get("user_id")
+
+        # ----------------------------------------------------------
+        # # Obtener el user_id del token y comparar con el id_usuario del body
+        # token_user_id = token_payload.get("user_id")
+        # ----------------------------------------------------------
+
         
         body = await request.json()
         
@@ -329,8 +340,13 @@ async def update_user(request: Request, token_payload: dict = Depends(verify_tok
         if not num_ref or not isinstance(num_ref, str):
            raise HTTPException(status_code=400, detail="El campo 'num_ref' es obligatorio y debe ser una cadena.")
         
-        if id_user != token_user_id:
-            raise HTTPException(status_code=403, detail="No estás autorizado para actualizar otro usuario.")
+        # ----------------------------------------------------------
+        
+        # if id_user != token_user_id:
+        #     raise HTTPException(status_code=403, detail="No estás autorizado para actualizar otro usuario.")
+        
+        # ----------------------------------------------------------
+
         
         # Extraer y validar datos opcionales
         legal_Name = body.get("razon_social")
@@ -494,12 +510,15 @@ async def update_user(request: Request, token_payload: dict = Depends(verify_tok
         customer_data = build_customer_data(id_user, updated_contact, id_plan, plain_password)
 
         # -------------------------------------------------------------------------
-        # create_customer_response = await create_customer_in_pontis(customer_data)
+        create_customer_response = await create_customer_in_pontis(customer_data)
 
-        # # Verificar que se obtuvo correctamente el nombre de usuario de Pontis
-        # if not create_customer_response.get("response"):
-        #     raise HTTPException(status_code=500, detail="No se obtuvieron credenciales de Pontis.")
-        # pontis_username = create_customer_response["response"]
+        # Verificar que se obtuvo correctamente el nombre de usuario de Pontis
+        if not create_customer_response.get("response"):
+            raise HTTPException(status_code=500, detail="No se obtuvieron credenciales de Pontis.")
+        pontis_username = create_customer_response["response"]
+
+        # ----------------------------------------------------------
+
 
         # obtenemos el email del usuario desde SQLite
         user_record = get_user_record(id_user)
@@ -509,14 +528,18 @@ async def update_user(request: Request, token_payload: dict = Depends(verify_tok
         send_pontis_credentials_email(
             to_email=email,  # Ajusta: aquí deberías usar el correo del usuario, p.ej. la variable email.
             subject="Tus credenciales de acceso:",
-            # pontis_username=pontis_username,
-            pontis_username="pontis_username",
+            pontis_username=pontis_username,
+            # pontis_username="pontis_username",
             pontis_password=plain_password
         )
 
+        # ----------------------------------------------------------
+
         print("Credenciales enviadas a", email)
-        print("user", "pontis_username")
+        print("user", pontis_username)
         print("pass", plain_password)
+
+        # ----------------------------------------------------------
 
         # Actualizar el usuario en SQLite para marcar la aceptación de políticas
         update_user_policies(id_user)
@@ -525,7 +548,9 @@ async def update_user(request: Request, token_payload: dict = Depends(verify_tok
             "detail": "Factura creada y pagada correctamente", 
             "invoice_id": invoice_id, 
             "payment_id": payment_register_id,
-            # "res_pontis": create_customer_response
+            # ----------------------------------------------------------
+            "res_pontis": create_customer_response
+            # ----------------------------------------------------------
         }
         
     except HTTPException as http_error:

@@ -1,13 +1,5 @@
-from fastapi import APIRouter, HTTPException, Query, Depends
-from app.core.security import verify_token
-from app.core.database import get_odoo_connection
-from app.services.odoo_service import execute_odoo_method
-
-router = APIRouter(prefix="/contacts", tags=["contacts"])
-
-
-
-from fastapi import APIRouter, HTTPException, Query, Depends
+from fastapi import APIRouter, HTTPException, Query, Depends, Request
+from app.core.email_validation import is_valid_email
 from app.core.security import verify_token
 from app.core.database import get_odoo_connection
 from app.services.odoo_service import execute_odoo_method
@@ -96,6 +88,84 @@ async def search_contacts(
     return {"total": len(results), "contacts": results}
 
 
+# TODO: REVISAR
+@router.patch("/{contact_id}")
+async def update_contact(contact_id: int, request: Request, token_payload: dict = Depends(verify_token)):
+    """
+    Actualiza ciertos campos de un contacto en Odoo.
+    
+    Se requieren:
+      - El 'contact_id' en la URL.
+      - En el body, se debe enviar al menos:
+          - "name": El nombre del contacto (no vacío ni solo espacios).
+          - "email": El correo electrónico (no vacío, sin espacios y en formato válido).
+      - Otros campos opcionales se actualizarán si se proporcionan y no están vacíos.
+      
+    Devuelve un JSON con:
+      - detail: Mensaje de éxito.
+      - updated_fields: Los campos actualizados.
+    """
+    try:
+        # Leer el JSON enviado en la solicitud
+        data = await request.json()
+        
+        # Validar que se envíen los campos obligatorios "name" y "email"
+        if "name" not in data:
+            raise HTTPException(status_code=400, detail="El campo 'name' es obligatorio.")
+        if "email" not in data:
+            raise HTTPException(status_code=400, detail="El campo 'email' es obligatorio.")
+        
+        # Eliminar espacios en blanco y validar que no queden vacíos
+        name = data["name"].strip()
+        email = data["email"].strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="El campo 'name' no puede estar vacío.")
+        if not email:
+            raise HTTPException(status_code=400, detail="El campo 'email' no puede estar vacío.")
+        
+        # Validar formato de email (utilizando la función is_valid_email)
+        if not is_valid_email(email):
+            raise HTTPException(status_code=400, detail="El formato del email no es válido.")
+        
+        # Preparar un diccionario con los campos a actualizar (solamente los obligatorios y los opcionales que se hayan enviado)
+        update_fields = {
+            "name": name,
+            "email": email
+        }
+        # Actualizar opcionalmente otros campos si se envían y tienen contenido no vacío (se eliminan espacios)
+        if "mobile" in data:
+            mobile = data["mobile"].strip()
+            if mobile:
+                update_fields["mobile"] = mobile
+        if "company_registry" in data:
+            company_registry = data["company_registry"].strip()
+            if company_registry:
+                update_fields["company_registry"] = company_registry
+        if "l10n_bo_district" in data:
+            district = data["l10n_bo_district"].strip()
+            if district:
+                update_fields["l10n_bo_district"] = district
+        # Puedes agregar más campos opcionales según sea necesario.
+
+        # Conectar a Odoo
+        conn = get_odoo_connection()
+
+        # Actualizar el contacto usando el método 'write'
+        result = execute_odoo_method(
+            conn,
+            'res.partner',
+            'write',
+            [[contact_id], update_fields]
+        )
+        if not result:
+            raise HTTPException(status_code=500, detail="No se pudo actualizar el contacto en Odoo.")
+        
+        return {"detail": "Contacto actualizado correctamente.", "updated_fields": update_fields}
+
+    except HTTPException as http_err:
+        raise http_err
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
 
 
 
