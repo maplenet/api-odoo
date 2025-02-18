@@ -459,7 +459,7 @@ async def update_user(request: Request, token_payload: dict = Depends(verify_tok
             'vr_metodo_pago': id_payment_method,
             'vr_nro_tarjeta': num_card,
             'vr_tipo_documento_identidad': type_doc,
-	    'payment_reference': num_ref,
+	        'payment_reference': num_ref,
             'invoice_line_ids': [invoice_line],
         }
         
@@ -494,12 +494,12 @@ async def update_user(request: Request, token_payload: dict = Depends(verify_tok
         customer_data = build_customer_data(id_user, updated_contact, id_plan, plain_password)
 
         # -------------------------------------------------------------------------
-        create_customer_response = await create_customer_in_pontis(customer_data)
+        # create_customer_response = await create_customer_in_pontis(customer_data)
 
-        # Verificar que se obtuvo correctamente el nombre de usuario de Pontis
-        if not create_customer_response.get("response"):
-            raise HTTPException(status_code=500, detail="No se obtuvieron credenciales de Pontis.")
-        pontis_username = create_customer_response["response"]
+        # # Verificar que se obtuvo correctamente el nombre de usuario de Pontis
+        # if not create_customer_response.get("response"):
+        #     raise HTTPException(status_code=500, detail="No se obtuvieron credenciales de Pontis.")
+        # pontis_username = create_customer_response["response"]
 
         # obtenemos el email del usuario desde SQLite
         user_record = get_user_record(id_user)
@@ -509,12 +509,13 @@ async def update_user(request: Request, token_payload: dict = Depends(verify_tok
         send_pontis_credentials_email(
             to_email=email,  # Ajusta: aquí deberías usar el correo del usuario, p.ej. la variable email.
             subject="Tus credenciales de acceso:",
-            pontis_username=pontis_username,
+            # pontis_username=pontis_username,
+            pontis_username="pontis_username",
             pontis_password=plain_password
         )
 
         print("Credenciales enviadas a", email)
-        print("user", pontis_username)
+        print("user", "pontis_username")
         print("pass", plain_password)
 
         # Actualizar el usuario en SQLite para marcar la aceptación de políticas
@@ -524,7 +525,7 @@ async def update_user(request: Request, token_payload: dict = Depends(verify_tok
             "detail": "Factura creada y pagada correctamente", 
             "invoice_id": invoice_id, 
             "payment_id": payment_register_id,
-            "res_pontis": create_customer_response
+            # "res_pontis": create_customer_response
         }
         
     except HTTPException as http_error:
@@ -823,24 +824,25 @@ async def activate_contact_portal(request: Request):
         await login_to_external_api()
 
         # -------------------------------------------------------------------------
-        activation_response = await create_customer_in_pontis(customer_data)
-        if not activation_response.get("response"):
-            raise HTTPException(status_code=500, detail="No se pudieron activar las credenciales en Pontis.")
-        pontis_username = activation_response["response"]
+        # activation_response = await create_customer_in_pontis(customer_data)
+        # if not activation_response.get("response"):
+        #     raise HTTPException(status_code=500, detail="No se pudieron activar las credenciales en Pontis.")
+        # pontis_username = activation_response["response"]
 
         # 14. Enviar por correo las credenciales de acceso a Pontis
         send_pontis_credentials_email(
             to_email=contact_info.get("email"),
             subject="Tus credenciales de acceso a Pontis",
-            pontis_username=pontis_username,
+            # pontis_username=pontis_username,
+            pontis_username="pontis_username",
             pontis_password=new_password
         )
 
         return {
             "detail": "Contacto activado como usuario portal en Pontis correctamente.",
-            "pontis_username": pontis_username,
+            # "pontis_username": pontis_username,
             "new_password": new_password,
-            "activation_response": activation_response
+            # "activation_response": activation_response
         }
         
     except HTTPException as http_err:

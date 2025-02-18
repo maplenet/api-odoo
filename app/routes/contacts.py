@@ -7,6 +7,13 @@ router = APIRouter(prefix="/contacts", tags=["contacts"])
 
 
 
+from fastapi import APIRouter, HTTPException, Query, Depends
+from app.core.security import verify_token
+from app.core.database import get_odoo_connection
+from app.services.odoo_service import execute_odoo_method
+
+router = APIRouter(prefix="/contacts", tags=["contacts"])
+
 @router.get("/search")
 async def search_contacts(
     email: str = Query(..., description="Correo electrónico a buscar"),
@@ -28,7 +35,9 @@ async def search_contacts(
               "l10n_bo_district": <valor de l10n_bo_district>,
               "mobile": <número de móvil>,
               "email": <correo electrónico>,
-              "vat": <valor del campo vat>
+              "vat": <valor del campo vat>,
+              "l10n_latam_identification_type_id": <valor>,
+              "l10n_bo_business_name": <valor>
             }
     """
     # Validación inicial: el Query ya asegura que se envíe 'email'
@@ -44,30 +53,32 @@ async def search_contacts(
         'res.partner',
         'search_read',
         [[('email', 'ilike', email)]],
-        {'fields': ["id", "name", "company_registry", "l10n_bo_district", "mobile", "email", "vat"]}
+        {'fields': ["id", "name", "company_registry", "l10n_bo_district", "mobile", "email", "vat", "l10n_latam_identification_type_id", "l10n_bo_business_name"]}
     )
     
     total = len(contacts)
     if total == 0:
         raise HTTPException(status_code=404, detail="No se encontraron contactos para el correo proporcionado.")
     
+    # Extraer los IDs de los contactos para la búsqueda masiva de usuarios asociados
+    contact_ids = [contact["id"] for contact in contacts]
+    
+    # Buscar en res.users todos los usuarios cuyo partner_id esté en la lista de contact_ids
+    associated_users = execute_odoo_method(
+        conn,
+        'res.users',
+        'search_read',
+        [[('partner_id', 'in', contact_ids)]],
+        {'fields': ['id', 'partner_id']}
+    )
+    
+    # Crear un diccionario para mapear partner_id al id de usuario
+    partner_to_user = { user["partner_id"][0]: user["id"] for user in associated_users if user.get("partner_id") }
+    
     results = []
-    # Para cada contacto encontrado, se busca si está asociado a algún usuario
+    # Recorrer los contactos y agregar el id_user si existe
     for contact in contacts:
-        associated_users = execute_odoo_method(
-            conn,
-            'res.users',
-            'search_read',
-            [[('partner_id', '=', contact["id"])]],
-            {'fields': ['id']}
-        )
-        if associated_users:
-            id_user = associated_users[0]["id"]
-        else:
-            id_user = ""
-        
-        # Se crea un nuevo diccionario con la estructura deseada,
-        # renombrando la clave 'id' a 'id_contact' y agregando 'id_user'
+        id_user = partner_to_user.get(contact["id"], "")
         new_contact = {
             "id_contact": contact["id"],
             "id_user": id_user,
@@ -76,11 +87,14 @@ async def search_contacts(
             "l10n_bo_district": contact.get("l10n_bo_district", ""),
             "mobile": contact.get("mobile", ""),
             "email": contact.get("email", ""),
-            "vat": contact.get("vat", "")
+            "vat": contact.get("vat", ""),
+            "l10n_latam_identification_type_id": contact.get("l10n_latam_identification_type_id", ""),
+            "l10n_bo_business_name": contact.get("l10n_bo_business_name", "")
         }
         results.append(new_contact)
     
     return {"total": len(results), "contacts": results}
+
 
 
 
