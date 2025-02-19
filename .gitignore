@@ -12,5 +12,9 @@ query_db.py
 verification.db
 .vscode/
 .env
+.env.prod
+.env.test
+start.sh
 Untitled-3.py
 edit.py
+
