@@ -45,8 +45,9 @@ async def search_contacts(
         'res.partner',
         'search_read',
         [[('email', 'ilike', email)]],
-        {'fields': ["id", "name", "company_registry", "l10n_bo_district", "mobile", "email", "vat", "l10n_latam_identification_type_id", "l10n_bo_business_name"]}
+        {'fields': ["id", "name", "company_registry", "l10n_bo_district", "mobile", "email", "vat"]}
     )
+
     
     total = len(contacts)
     if total == 0:
@@ -75,22 +76,24 @@ async def search_contacts(
             "id_contact": contact["id"],
             "id_user": id_user,
             "name": contact.get("name", ""),
-            "company_registry": contact.get("company_registry", ""),
-            "l10n_bo_district": contact.get("l10n_bo_district", ""),
+            "ci": contact.get("company_registry", ""),
+            "direction": contact.get("l10n_bo_district", ""),
             "mobile": contact.get("mobile", ""),
             "email": contact.get("email", ""),
-            "vat": contact.get("vat", ""),
-            "l10n_latam_identification_type_id": contact.get("l10n_latam_identification_type_id", ""),
-            "l10n_bo_business_name": contact.get("l10n_bo_business_name", "")
+            "nit_ci_cex": contact.get("vat", ""),
+            "type_doc": contact.get("l10n_latam_identification_type_id", ""),
+            "business_name": contact.get("l10n_bo_business_name", "")
         }
         results.append(new_contact)
     
     return {"total": len(results), "contacts": results}
 
 
-# TODO: REVISAR
 @router.patch("/{contact_id}")
-async def update_contact(contact_id: int, request: Request, token_payload: dict = Depends(verify_token)):
+async def update_contact(
+    contact_id: int, request: Request, 
+    # token_payload: dict = Depends(verify_token)
+    ):
     """
     Actualiza ciertos campos de un contacto en Odoo.
     
@@ -103,54 +106,57 @@ async def update_contact(contact_id: int, request: Request, token_payload: dict 
       
     Devuelve un JSON con:
       - detail: Mensaje de éxito.
-      - updated_fields: Los campos actualizados.
     """
     try:
         # Leer el JSON enviado en la solicitud
         data = await request.json()
-        
+
         # Validar que se envíen los campos obligatorios "name" y "email"
         if "name" not in data:
-            raise HTTPException(status_code=400, detail="El campo 'name' es obligatorio.")
+            raise HTTPException(status_code=400, detail="The 'name' field is required.")
         if "email" not in data:
-            raise HTTPException(status_code=400, detail="El campo 'email' es obligatorio.")
-        
+            raise HTTPException(status_code=400, detail="The 'email' field is required.")
+
         # Eliminar espacios en blanco y validar que no queden vacíos
         name = data["name"].strip()
         email = data["email"].strip()
         if not name:
-            raise HTTPException(status_code=400, detail="El campo 'name' no puede estar vacío.")
+            raise HTTPException(status_code=400, detail="The 'name' field cannot be empty.")
         if not email:
-            raise HTTPException(status_code=400, detail="El campo 'email' no puede estar vacío.")
-        
-        # Validar formato de email (utilizando la función is_valid_email)
+            raise HTTPException(status_code=400, detail="The 'email' field cannot be empty.")
+
+        # Validar el formato de email utilizando la función is_valid_email
         if not is_valid_email(email):
-            raise HTTPException(status_code=400, detail="El formato del email no es válido.")
-        
-        # Preparar un diccionario con los campos a actualizar (solamente los obligatorios y los opcionales que se hayan enviado)
+            raise HTTPException(status_code=400, detail="The email format is not valid.")
+
+        # Preparar un diccionario con los campos a actualizar
         update_fields = {
             "name": name,
             "email": email
         }
-        # Actualizar opcionalmente otros campos si se envían y tienen contenido no vacío (se eliminan espacios)
+
+        # Actualizar opcionalmente otros campos si se envían
         if "mobile" in data:
-            mobile = data["mobile"].strip()
+            # Asegurarse de tratar el dato como string
+            mobile = str(data["mobile"]).strip()
             if mobile:
                 update_fields["mobile"] = mobile
-        if "company_registry" in data:
-            company_registry = data["company_registry"].strip()
+
+        if "ci" in data:
+            # Convertir a string para poder usar strip() y validar
+            company_registry = str(data["ci"]).strip()
             if company_registry:
                 update_fields["company_registry"] = company_registry
-        if "l10n_bo_district" in data:
-            district = data["l10n_bo_district"].strip()
+
+        if "direction" in data:
+            district = str(data["direction"]).strip()
             if district:
                 update_fields["l10n_bo_district"] = district
-        # Puedes agregar más campos opcionales según sea necesario.
 
         # Conectar a Odoo
         conn = get_odoo_connection()
 
-        # Actualizar el contacto usando el método 'write'
+        # Actualizar el contacto usando el método 'write' de Odoo
         result = execute_odoo_method(
             conn,
             'res.partner',
@@ -158,14 +164,17 @@ async def update_contact(contact_id: int, request: Request, token_payload: dict 
             [[contact_id], update_fields]
         )
         if not result:
-            raise HTTPException(status_code=500, detail="No se pudo actualizar el contacto en Odoo.")
-        
-        return {"detail": "Contacto actualizado correctamente.", "updated_fields": update_fields}
+            raise HTTPException(status_code=500, detail="Could not update contact in Odoo.")
+
+        return {"detail": "Contact updated successfully."}
 
     except HTTPException as http_err:
         raise http_err
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
+        # Se envía solo el mensaje de error sin prefijo adicional.
+        raise HTTPException(status_code=500, detail=str(e))
+    
+    
 
 
 
