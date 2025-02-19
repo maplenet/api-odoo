@@ -45,8 +45,9 @@ async def search_contacts(
         'res.partner',
         'search_read',
         [[('email', 'ilike', email)]],
-        {'fields': ["id", "name", "company_registry", "l10n_bo_district", "mobile", "email", "vat"]}
+        {'fields': ["id", "name", "company_registry", "l10n_bo_district", "mobile", "email", "city", "state_id", "country_id"]}
     )
+
 
     
     total = len(contacts)
@@ -80,9 +81,9 @@ async def search_contacts(
             "direction": contact.get("l10n_bo_district", ""),
             "mobile": contact.get("mobile", ""),
             "email": contact.get("email", ""),
-            "nit_ci_cex": contact.get("vat", ""),
-            "type_doc": contact.get("l10n_latam_identification_type_id", ""),
-            "business_name": contact.get("l10n_bo_business_name", "")
+            "city": contact.get("city", ""),
+            "state_id": contact.get("state_id", ""),
+            "country_id": contact.get("country_id", "")
         }
         results.append(new_contact)
     
@@ -90,22 +91,21 @@ async def search_contacts(
 
 
 @router.patch("/{contact_id}")
-async def update_contact(
-    contact_id: int, request: Request, 
-    # token_payload: dict = Depends(verify_token)
-    ):
+async def update_contact(contact_id: int, request: Request, token_payload: dict = Depends(verify_token)):
     """
     Actualiza ciertos campos de un contacto en Odoo.
-    
+
     Se requieren:
       - El 'contact_id' en la URL.
       - En el body, se debe enviar al menos:
           - "name": El nombre del contacto (no vacío ni solo espacios).
           - "email": El correo electrónico (no vacío, sin espacios y en formato válido).
-      - Otros campos opcionales se actualizarán si se proporcionan y no están vacíos.
+      - Los campos opcionales "mobile", "company_registry", "l10n_bo_district", "city" y "state_id"
+        se actualizarán si se proporcionan y no están vacíos.
       
     Devuelve un JSON con:
       - detail: Mensaje de éxito.
+      - updated_fields: Los campos que fueron actualizados.
     """
     try:
         # Leer el JSON enviado en la solicitud
@@ -125,25 +125,24 @@ async def update_contact(
         if not email:
             raise HTTPException(status_code=400, detail="The 'email' field cannot be empty.")
 
-        # Validar el formato de email utilizando la función is_valid_email
+        # Validar formato del email
         if not is_valid_email(email):
             raise HTTPException(status_code=400, detail="The email format is not valid.")
 
-        # Preparar un diccionario con los campos a actualizar
+        # Inicializar diccionario con los campos obligatorios
         update_fields = {
             "name": name,
             "email": email
         }
 
-        # Actualizar opcionalmente otros campos si se envían
+        # Actualizar opcionalmente otros campos si se envían y tienen contenido no vacío
+
         if "mobile" in data:
-            # Asegurarse de tratar el dato como string
             mobile = str(data["mobile"]).strip()
             if mobile:
                 update_fields["mobile"] = mobile
 
         if "ci" in data:
-            # Convertir a string para poder usar strip() y validar
             company_registry = str(data["ci"]).strip()
             if company_registry:
                 update_fields["company_registry"] = company_registry
@@ -153,10 +152,32 @@ async def update_contact(
             if district:
                 update_fields["l10n_bo_district"] = district
 
+        # Validar y actualizar el campo 'city'
+        if "city" in data:
+            city = str(data["city"]).strip()
+            if city:
+                update_fields["city"] = city
+            else:
+                raise HTTPException(status_code=400, detail="The 'city' field cannot be empty.")
+
+        # Validar y actualizar el campo 'state_id'
+        if "state_id" in data:
+            # Se espera que 'state_id' sea un valor numérico o convertible a entero
+            try:
+                state_id = int(data["state_id"])
+                update_fields["state_id"] = state_id
+            except (TypeError, ValueError):
+                raise HTTPException(status_code=400, detail="The 'state_id' field must be a valid number.")
+        
+        try: 
+            update_fields["country_id"] = 29
+        except (TypeError, ValueError):
+                raise HTTPException(status_code=400, detail="The 'country_id' field must be a valid number.")
+
         # Conectar a Odoo
         conn = get_odoo_connection()
 
-        # Actualizar el contacto usando el método 'write' de Odoo
+        # Intentar actualizar el contacto en Odoo
         result = execute_odoo_method(
             conn,
             'res.partner',
@@ -166,7 +187,10 @@ async def update_contact(
         if not result:
             raise HTTPException(status_code=500, detail="Could not update contact in Odoo.")
 
-        return {"detail": "Contact updated successfully."}
+        return {
+            "detail": "Contact updated successfully.", 
+            # "updated_fields": update_fields
+            }
 
     except HTTPException as http_err:
         raise http_err
@@ -174,7 +198,7 @@ async def update_contact(
         # Se envía solo el mensaje de error sin prefijo adicional.
         raise HTTPException(status_code=500, detail=str(e))
     
-    
+
 
 
 
