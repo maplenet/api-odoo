@@ -2,6 +2,7 @@ import random
 import string
 from fastapi import APIRouter, HTTPException, Depends, Request, Query
 import re
+from app.core.email_validation import is_valid_email
 from app.core.security import verify_token
 from app.core.database import get_odoo_connection, get_sqlite_connection
 from app.core.email_utils import send_pontis_credentials_email
@@ -59,6 +60,8 @@ async def create_user(request: Request):
                 status_code=400, 
                 detail="The password must have at least 8 characters and max 40 characteres, including 1 uppercase, 1 lowercase and 1 number."
             )
+        
+        is_valid_email(email)  # Lanza una excepción si el correo no es válido
 
         sqlite_conn = get_sqlite_connection()
         cursor = sqlite_conn.cursor()
@@ -187,7 +190,10 @@ async def change_password(request: Request, token_payload: dict = Depends(verify
 
 
 @router.get("/get/{user_id}")
-async def get_user_with_service(user_id: int, token_payload: dict = Depends(verify_token)):
+async def get_user_with_service(
+    user_id: int, 
+    token_payload: dict = Depends(verify_token)
+    ):
 
     """
     Obtiene la información del usuario junto con los datos de su servicio.
@@ -213,7 +219,7 @@ async def get_user_with_service(user_id: int, token_payload: dict = Depends(veri
         user_data = odoo_conn['models'].execute_kw(
             odoo_conn['db'], odoo_conn['uid'], odoo_conn['password'],
             'res.users', 'read', [[user_id]],
-            {'fields': ['email', 'name', 'password', 'mobile', 'street', 'partner_id']}
+            {'fields': ['email', 'name', 'password', 'mobile', 'l10n_bo_district', 'partner_id']}
         )
         if not user_data:
             raise HTTPException(status_code=404, detail="Usuario no encontrado en Odoo.")
@@ -290,7 +296,7 @@ async def get_user_with_service(user_id: int, token_payload: dict = Depends(veri
                 "first_name": user_record.get("first_name"),
                 "last_name": user_record.get("last_name"),
                 "mobile": user_record.get("mobile"),
-                "street": user_record.get("street") or "",
+                "street": user_record.get("l10n_bo_district") or "",
                 "ci": user_record.get("ci") or ""
             },
             "service": service
@@ -390,7 +396,6 @@ async def update_user(request: Request):
             raise HTTPException(status_code=400, detail="El número de documento solo puede contener números.")
         if num_doc != "00" and len(num_doc) < 5:
             raise HTTPException(status_code=400, detail="El número de documento debe tener al menos 5 dígitos o ser '00' si no se registra.")
-        company_registry = num_doc
         
         # Método de pago: valor por defecto "7" si es nulo o vacío
         if id_payment_method is None:
@@ -440,8 +445,8 @@ async def update_user(request: Request):
         # Actualizar los campos del contacto ligado al usuario en Odoo
         success = execute_odoo_method(
             conn, 'res.partner', 'write', [[partner_id], {
-                "company_registry": company_registry,
                 "vat": num_doc,
+                "l10n_latam_identification_type_id": int(type_doc),
                 "l10n_bo_extension": l10n_bo_extension if type_doc == "4" else '',
                 'l10n_bo_business_name': legal_Name,
             }]
@@ -599,14 +604,6 @@ async def search_contact(request: Request):
             {'fields': ['id', 'name', 'mobile', 'email', 'vat']}
         )
 
-        # Obtener el contacto con id 130 e imprimir sus datos
-        contacts2 = execute_odoo_method(
-            conn, 'res.partner', 'read', [[130]],
-            {'fields': ['id', 'name', 'mobile', 'email', 'vat']}
-        )
-
-
-
         if not contacts:
             raise HTTPException(status_code=404, detail="Contacto no encontrado.")
         contact_info = contacts[0]
@@ -689,6 +686,328 @@ def split_name(full_name: str) -> tuple:
     if len(parts) == 1:
         return (parts[0], "")
     return (parts[0], " ".join(parts[1:]))
+
+# ------------------------------------------------------------------------------------------------------------
+@router.patch("/activate_user")
+async def activate_user(request: Request):
+    """
+    Activa al usuario en Odoo y Pontis basándose en los datos del contacto.  
+    Requisitos obligatorios en el body:
+      - num_ref: (string) Número de referencia para la factura (no vacío).
+      - id_plan: (int) ID del plan.
+      - id_contact: (int) ID del contacto en Odoo.
+    Opcionales:
+      - id_user: (int) Si se envía, debe corresponder al usuario asociado al contacto.
+      - razon_social, tipo_doc, num_doc, extension, id_metodo_pago, num_tarjeta:  
+        Datos opcionales para actualizar el contacto y para la factura.
+        
+    Flujo:
+      1. Validar y parsear los campos obligatorios y opcionales.
+      2. Conectar a Odoo y obtener el contacto usando `id_contact`.
+      3. Si se envía `id_user`:
+             - Verificar que el contacto ya esté vinculado a ese usuario.
+         Si NO se envía `id_user`:
+             - Verificar que el contacto no tenga usuario asociado.
+             - Crear un usuario portal en Odoo vinculado al contacto.
+      4. Actualizar los campos del contacto en Odoo con los datos opcionales.
+      5. Buscar si existe una factura pagada para este contacto:
+             - Si existe y el plan está activo (hoy está dentro de [fecha_factura, fecha_factura+30 días]), se detiene el flujo.
+             - Si no, se procede a crear una nueva factura.
+      6. Crear la factura en Odoo (en draft) usando `num_ref` para el campo `payment_reference`, y confirmarla.
+      7. Registrar el pago de la factura.
+      8. Obtener la contraseña actual del usuario (desencriptada) y construir el payload para Pontis.
+      9. Llamar a la API de Pontis para activar el usuario y obtener las credenciales.
+      10. Enviar por correo las credenciales al usuario.
+      11. Actualizar en SQLite la aceptación de las políticas.
+    """
+    try:
+        # 1. Parsear y validar campos obligatorios
+        body = await request.json()
+        try:
+            id_plan = int(body.get("id_plan"))
+            id_contact = int(body.get("id_contact"))
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="Los campos 'id_plan' e 'id_contact' deben ser números.")
+        
+        num_ref = body.get("num_ref")
+        if not num_ref or not isinstance(num_ref, str) or not num_ref.strip():
+            raise HTTPException(status_code=400, detail="El campo 'num_ref' es obligatorio y debe ser una cadena no vacía.")
+        
+        # Opcional: id_user (si se envía, debe ser numérico)
+        id_user = None
+        if "id_user" in body:
+            try:
+                id_user = int(body.get("id_user"))
+            except (TypeError, ValueError):
+                raise HTTPException(status_code=400, detail="El campo 'id_user' debe ser un número si se proporciona.")
+        
+        # 2. Extraer y validar campos opcionales para actualizar el contacto
+        legal_Name = (body.get("razon_social") or "").strip() or "SIN NOMBRE"
+        type_doc = (body.get("tipo_doc") or "4").strip()
+        if type_doc not in ["1", "2", "3", "4", "5"]:
+            raise HTTPException(status_code=400, detail="El tipo de documento no es válido.")
+        l10n_bo_extension = (body.get("extension") or "").strip()
+        if type_doc != "1":
+            l10n_bo_extension = ""
+        if len(l10n_bo_extension) > 4:
+            raise HTTPException(status_code=400, detail="La extensión no puede tener más de 4 caracteres.")
+        num_doc = str(body.get("num_doc") or "00").strip() or "00"
+        if not num_doc.isdigit():
+            raise HTTPException(status_code=400, detail="El número de documento solo puede contener números.")
+        if num_doc != "00" and len(num_doc) < 5:
+            raise HTTPException(status_code=400, detail="El número de documento debe tener al menos 5 dígitos o ser '00' si no se registra.")
+
+
+        id_payment_method = (body.get("id_metodo_pago") or "7").strip()
+        if id_payment_method not in ["2", "7"]:
+            raise HTTPException(status_code=400, detail="El método de pago no es válido.")
+        num_card = ""
+        if id_payment_method == "2":
+            if not body.get("num_tarjeta"):
+                raise HTTPException(status_code=400, detail="El número de tarjeta es obligatorio para el método de pago '2'.")
+            num_card = str(body.get("num_tarjeta")).strip()
+            if not num_card:
+                raise HTTPException(status_code=400, detail="El número de tarjeta no puede estar vacío.")
+            if num_card[0] not in ["4", "5"]:
+                raise HTTPException(status_code=400, detail="El número de tarjeta no es válido.")
+            if len(num_card) != 8:
+                raise HTTPException(status_code=400, detail="El número de tarjeta debe tener 8 dígitos.")
+            if not num_card.isdigit():
+                raise HTTPException(status_code=400, detail="El número de tarjeta solo puede contener números.")
+        
+        
+        # 2.1. Conectar a Pontis, construir el payload y llamar a la API
+        # await login_to_external_api()
+        
+        # 3. Conectar a Odoo y obtener el contacto
+        conn = get_odoo_connection()
+
+        contact_data = execute_odoo_method(conn, 'res.partner', 'read', [[id_contact]], {'fields': []})
+        if not contact_data:
+            raise HTTPException(status_code=404, detail="Contacto no encontrado en Odoo.")
+        contact_info = contact_data[0]
+
+        # obtener name y email del contacto
+        name = contact_info.get("name")
+        if name is None:
+            raise HTTPException(status_code=500, detail="El contacto no tiene un nombre.")
+        if not name.strip():
+            raise HTTPException(status_code=500, detail="El contacto no tiene un nombre válido.")
+        email = contact_info.get("email")
+        
+        if email is None:
+            raise HTTPException(status_code=500, detail="El contacto no tiene un email.")
+        if not email.strip():
+            raise HTTPException(status_code=500, detail="El contacto no tiene un email válido.")
+        is_valid_email(email)
+
+        # 4. Validar asociación del usuario con el contacto
+        if id_user is not None:
+            # Verificar que el contacto esté vinculado al usuario proporcionado.
+            user_search = execute_odoo_method(
+                conn, 
+                'res.users', 'search_read', [[('partner_id', '=', id_contact)]], {'fields': ['id']})
+            if not user_search or user_search[0]["id"] != id_user:
+                raise HTTPException(status_code=400, detail="El id_user proporcionado no coincide con el usuario asociado al contacto.")
+            
+            get_user_record(id_user)
+
+            
+            # Obtenemos la contraseña actual del usuario del sqlite
+            new_password = get_decrypted_password(id_user)
+        else:
+            # Si no se proporcionó id_user, asegurarse de que el contacto no esté asociado a ningún usuario.
+            associated_users = execute_odoo_method(conn, 'res.users', 'search_read', [[('partner_id', '=', id_contact)]], {'fields': []})
+            if not associated_users:
+
+                print("hasta aqui ok")
+                new_password = generate_random_password(8)
+                # Crear el usuario de tipo portal en Odoo asociado al contacto.
+                # Importante: Asignamos partner_id para evitar crear un nuevo contacto.
+                group_portal = execute_odoo_method(
+                    conn, 'ir.model.data', 'search_read',
+                    [[('model', '=', 'res.groups'), ('module', '=', 'base'), ('name', '=', 'group_portal')]],
+                    {'fields': ['res_id'], 'limit': 1}
+                )
+                if not group_portal:
+                    raise HTTPException(status_code=500, detail="No se encontró el grupo portal en Odoo.")
+                group_portal_id = group_portal[0]['res_id']
+                new_user_vals = {
+                    'login': contact_info.get("email"),
+                    'name': contact_info.get("name"),
+                    'email': contact_info.get("email"),
+                    'mobile': contact_info.get("mobile"),
+                    'password': new_password,
+                    'lang': 'es_MX',
+                    'partner_id': id_contact,  # Asociamos el usuario al contacto existente
+                    'groups_id': [(6, 0, [group_portal_id])]
+                }
+                id_user = execute_odoo_method(
+                    conn, 'res.users', 'create', [new_user_vals],
+                    kwargs={'context': {'no_reset_password': True}}
+                )
+                if not id_user:
+                    raise HTTPException(status_code=500, detail="No se pudo crear el usuario portal en Odoo.")
+                
+                # Divimos el nombre completo en nombre y apellido
+                first_name, last_name = split_name(name)
+
+
+                # Guardar el usuario en SQLite
+                insert_user_record(
+                    id_user, 
+                    first_name,
+                    last_name,
+                    contact_info.get("email"), 
+                    contact_info.get("mobile"), 
+                    new_password, 
+                    )
+
+
+            else:
+                # obtenemos los datos del usuario del sqlite
+                # user_record = get_user_record(id_user)-----------------------
+
+                # Obtenemos el id del usuario
+                
+                id_user = associated_users[0]["id"]
+                
+
+                # Verificamos que en la base de datos de SQLite exista el usuario
+                get_user_record(id_user)
+                
+                # desencriptamos la contraseña
+                new_password = get_decrypted_password(id_user)
+                
+
+                
+
+
+        
+        # 5. Actualizar campos del contacto en Odoo
+        update_fields = {
+            "vat": num_doc,
+            "l10n_latam_identification_type_id": int(type_doc),
+            "l10n_bo_extension": l10n_bo_extension if type_doc == "4" else '',
+            "l10n_bo_business_name": legal_Name,
+        }
+        update_result = execute_odoo_method(conn, 'res.partner', 'write', [[id_contact], update_fields])
+        if not update_result:
+            raise HTTPException(status_code=500, detail="No se pudo actualizar el contacto en Odoo.")
+        
+        # 6. Verificar si el contacto tiene facturas pagadas y si el plan está activo.
+        invoices = execute_odoo_method(conn, 'account.move', 'search_read',
+                                        [[('partner_id', '=', id_contact), ('payment_state', '=', 'paid')]],
+                                        {'fields': ['invoice_date', 'invoice_line_ids'], 'order': 'invoice_date desc', 'limit': 1})
+        plan_active = False
+        if invoices:
+            invoice = invoices[0]
+            invoice_date_str = invoice.get('invoice_date')
+            if invoice_date_str:
+                invoice_date = datetime.strptime(invoice_date_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+                expiry_date = invoice_date + timedelta(days=30)
+                now = datetime.now(timezone.utc)
+                print("invoice_date:", invoice_date)
+                print("expiry_date:", expiry_date)
+                print("now:", now)
+                if invoice_date <= now <= expiry_date:
+                    plan_active = True
+        # Si el plan está activo, detener el flujo.
+        if plan_active:
+            raise HTTPException(status_code=400, detail="El contacto ya tiene un plan activo.")
+        
+        # 7. Crear una nueva factura en Odoo con payment_reference = num_ref
+        product_data = execute_odoo_method(conn, 'product.product', 'read', [[id_plan]])
+        if not product_data:
+            raise HTTPException(status_code=404, detail="El producto no existe.")
+        product = product_data[0]
+        invoice_line = (0, 0, {
+            'product_id': product['id'],
+            'name': product['name'],
+            'quantity': 1,
+            'price_unit': product['list_price'],
+            'tax_ids': [(6, 0, [1])],
+        })
+        data_to_create_invoice = {
+            'partner_id': id_contact,
+            'move_type': 'out_invoice',
+            "currency_id": 63,
+            'vr_nit_ci': num_doc,
+            'vr_extension': l10n_bo_extension or '',
+            'vr_razon_social': legal_Name,
+            'vr_warehouse_id': 1,
+            'vr_metodo_pago': id_payment_method,
+            'vr_nro_tarjeta': num_card,
+            'vr_tipo_documento_identidad': type_doc,
+            'payment_reference': num_ref,
+            'invoice_line_ids': [invoice_line],
+        }
+        invoice_id = execute_odoo_method(conn, 'account.move', 'create', [data_to_create_invoice])
+        execute_odoo_method(conn, 'account.move', 'action_post', [[invoice_id]])
+        
+        # 8. Registrar el pago de la factura
+        invoice_info = execute_odoo_method(conn, 'account.move', 'read', [[invoice_id],
+                                             ['amount_total', 'currency_id', 'partner_id', 'name']])[0]
+        payment_data = {
+            'payment_type': 'inbound',
+            'communication': invoice_info['name'],
+            'payment_date': datetime.now().strftime("%Y-%m-%d"),
+            'amount': invoice_info['amount_total'],
+            'currency_id': invoice_info['currency_id'][0],
+            'partner_id': invoice_info['partner_id'][0],
+            'journal_id': 7,
+            'partner_bank_id': 1,
+        }
+        context = {'active_ids': [invoice_id], 'active_model': 'account.move', 'active_id': invoice_id}
+        payment_register_id = execute_odoo_method(conn, 'account.payment.register', 'create', [[payment_data]], {'context': context})
+        execute_odoo_method(conn, 'account.payment.register', 'action_create_payments', [[payment_register_id[0]]])
+        
+        # 9. Obtener el contacto actualizado desde Odoo
+        updated_contact = execute_odoo_method(conn, 'res.partner', 'read', [[id_contact]])
+        if not updated_contact:
+            raise HTTPException(status_code=500, detail="Error al obtener datos actualizados del contacto.")
+
+
+        
+
+        
+        # customer_data = build_customer_data(id_user, updated_contact, id_plan, new_password)
+        # create_customer_response = await create_customer_in_pontis(customer_data)
+        # if not create_customer_response.get("response"):
+        #     raise HTTPException(status_code=500, detail="No se obtuvieron credenciales de Pontis.")
+        # pontis_username = create_customer_response["response"]
+        
+        # 12. Enviar credenciales al usuario por correo
+        send_pontis_credentials_email(
+            to_email=get_user_record(id_user).get("email"),
+            subject="Tus credenciales de acceso:",
+            pontis_username="Prueba",
+            # pontis_username=pontis_username,
+            pontis_password=new_password
+        )
+        
+        print("Credenciales enviadas a", get_user_record(id_user).get("email"))
+        # print("Usuario Pontis:", pontis_username)
+        print("Password:", new_password)
+        
+        # 13. Actualizar las políticas en SQLite para marcar como aceptadas
+        update_user_policies(id_user)
+        
+        return {
+            "detail": "Factura creada y pagada correctamente", 
+            "invoice_id": invoice_id, 
+            "payment_id": payment_register_id,
+            # "res_pontis": create_customer_response
+        }
+        
+    except HTTPException as http_err:
+        raise http_err
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ------------------------------------------------------------------------------------------------------------
+
+
 
 
 @router.post("/activate_contact_from_odoo")
@@ -874,4 +1193,5 @@ async def activate_contact_portal(request: Request):
         raise http_err
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
+
 
