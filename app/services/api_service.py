@@ -23,12 +23,12 @@ async def login_to_external_api():
     except httpx.HTTPStatusError as e:
         raise HTTPException(
             status_code=e.response.status_code,
-            detail=f"Error al autenticarse en la API externa: {e.response.text}"
+            detail=f"Error al autenticarse en la API externa de PONTIS: {e.response.text}"
         )
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Error interno al conectarse a la API externa: {str(e)}"
+            detail=f"Error interno al conectarse a la API externa de PONTIS: {str(e)}"
         )
    
 def build_customer_data(id_user, contact_data, id_plan, password):
