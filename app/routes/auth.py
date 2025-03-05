@@ -63,7 +63,7 @@ async def login(request: Request, response: Response):
             content={
                 "user_id": user["id"],
                 "partner_id": user["partner_id"][0],
-                # "access_token": access_token,
+                "access_token": access_token,
                 "detail": "Proceso exitoso."
             }
         )
