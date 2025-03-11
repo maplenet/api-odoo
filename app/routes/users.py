@@ -803,7 +803,7 @@ async def activate_contact_portal(request: Request):
         # 14. Enviar por correo las credenciales de acceso a Pontis
         send_pontis_credentials_email(
             to_email=contact_info.get("email"),
-            subject="Tus credenciales de acceso a Pontis",
+            subject="Tus credenciales de acceso a M+",
             pontis_username=pontis_username,
             pontis_password=new_password
         )

@@ -71,8 +71,8 @@ async def login(request: Request, response: Response):
             key="access_token",
             value=access_token,
             httponly=False,
-            secure=False,
-            samesite="lax"
+            secure=True,
+            samesite="strict"
         )
 
         return response
