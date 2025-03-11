@@ -433,6 +433,38 @@ async def update_user(request: Request, token_payload: dict = Depends(verify_tok
         if not success:
             raise HTTPException(status_code=500, detail="No se pudo actualizar el usuario.")
         
+
+
+        # ----------------------------------------------------------------------------
+
+
+         # Obtener el password desencriptado del usuario (nuevo)
+        plain_password = get_decrypted_password(id_user)
+
+        # Conexión a Pontis
+        await login_to_external_api()
+        customer_data = build_customer_data(id_user, updated_contact, id_plan, plain_password)
+
+        # -------------------------------------------------------------------------
+        create_customer_response = await create_customer_in_pontis(customer_data)
+
+        # Verificar que se obtuvo correctamente el nombre de usuario de Pontis
+        if not create_customer_response.get("response"):
+            raise HTTPException(status_code=500, detail="No se obtuvieron credenciales de Pontis.")
+        pontis_username = create_customer_response["response"]
+
+        # obtenemos el email del usuario desde SQLite
+        user_record = get_user_record(id_user)
+        email = user_record.get("email")
+
+         # Enviar credenciales al usuario por correo
+        send_pontis_credentials_email(
+            to_email=email,  # Ajusta: aquí deberías usar el correo del usuario, p.ej. la variable email.
+            subject="Tus credenciales de acceso:",
+            pontis_username=pontis_username,
+            pontis_password=plain_password
+        )
+        
         # ----------------------- Flujo de creación de factura -----------------------
         
         product = product_data[0]
@@ -486,32 +518,7 @@ async def update_user(request: Request, token_payload: dict = Depends(verify_tok
         updated_contact = execute_odoo_method(conn, 'res.partner', 'read', [[partner_id]])
 
 
-        # Obtener el password desencriptado del usuario (nuevo)
-        plain_password = get_decrypted_password(id_user)
-
-        # Conexión a Pontis
-        await login_to_external_api()
-        customer_data = build_customer_data(id_user, updated_contact, id_plan, plain_password)
-
-        # -------------------------------------------------------------------------
-        create_customer_response = await create_customer_in_pontis(customer_data)
-
-        # Verificar que se obtuvo correctamente el nombre de usuario de Pontis
-        if not create_customer_response.get("response"):
-            raise HTTPException(status_code=500, detail="No se obtuvieron credenciales de Pontis.")
-        pontis_username = create_customer_response["response"]
-
-        # obtenemos el email del usuario desde SQLite
-        user_record = get_user_record(id_user)
-        email = user_record.get("email")
-
-         # Enviar credenciales al usuario por correo
-        send_pontis_credentials_email(
-            to_email=email,  # Ajusta: aquí deberías usar el correo del usuario, p.ej. la variable email.
-            subject="Tus credenciales de acceso:",
-            pontis_username=pontis_username,
-            pontis_password=plain_password
-        )
+       # ---------------------------------------------------------------------
 
         print("Credenciales enviadas a", email)
         print("user", pontis_username)
@@ -667,25 +674,7 @@ def split_name(full_name: str) -> tuple:
 
 @router.post("/activate_contact_from_odoo")
 async def activate_contact_portal(request: Request):
-    """
-    Activa un contacto como usuario portal en Odoo y Pontis.
-    
-    Requiere:
-      - Un token válido, cuyo usuario sea interno.
-      - Recibir en el body un JSON con "id_contact" (el ID del contacto en Odoo).
-    
-    Flujo:
-      1. Verifica que el contacto no esté asociado a ningún usuario.
-      2. Revalida que el contacto tenga una factura pagada en Odoo y que la fecha actual
-         se encuentre dentro de [fecha emisión, fecha emisión + 30 días]. Se extrae el planId.
-      3. Genera una contraseña aleatoria.
-      4. Crea un usuario de tipo portal en Odoo asociado a este contacto, sin enviar invitación.
-      5. Registra el nuevo usuario en SQLite y marca las políticas como aceptadas.
-      6. Obtiene los datos actualizados del contacto.
-      7. Llama a build_customer_data pasando (id_user, updated_contact, id_plan, new_password) para armar el payload de activación.
-      8. Llama a la API de Pontis para activar el usuario.
-      9. Si la activación es exitosa, envía por correo las credenciales (usuario y contraseña).
-    """
+
     try:
         # 1. Obtener id_contact del body
         body = await request.json()
@@ -696,24 +685,7 @@ async def activate_contact_portal(request: Request):
         if not id_contact:
             raise HTTPException(status_code=400, detail="El campo 'id_contact' es obligatorio.")
 
-        # # 2. Verificar que el usuario que hace la consulta sea interno
-        # token_user_id = token_payload.get("user_id")
-        # # Obtenemos la información del usuario del token:
-        # user_token = execute_odoo_method(
-        #     get_odoo_connection(), 'res.users', 'read', [[token_user_id], ['groups_id']]
-        # )
-        # if not user_token:
-        #     raise HTTPException(status_code=404, detail="Usuario del token no encontrado.")
-        # internal_group = execute_odoo_method(
-        #     get_odoo_connection(), 'ir.model.data', 'search_read',
-        #     [[('model', '=', 'res.groups'), ('module', '=', 'base'), ('name', '=', 'group_user')]],
-        #     {'fields': ['res_id'], 'limit': 1}
-        # )
-        # if not internal_group:
-        #     raise HTTPException(status_code=500, detail="No se encontró el grupo interno.")
-        # internal_group_id = internal_group[0]['res_id']
-        # if internal_group_id not in user_token[0]['groups_id']:
-        #     raise HTTPException(status_code=403, detail="No estás autorizado para usar este endpoint.")
+
 
         # 3. Buscar el contacto en Odoo
         conn = get_odoo_connection()
