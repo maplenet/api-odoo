@@ -7,11 +7,12 @@ from app.core.security import verify_token
 from app.core.database import get_odoo_connection, get_sqlite_connection
 from app.core.email_utils import send_pontis_credentials_email
 from datetime import datetime, timedelta, timezone
-from app.services.api_service import build_customer_data, create_customer_in_pontis, login_to_external_api, update_customer_password_in_pontis
+from app.services.api_service import build_customer_data, build_update_customer_data, create_customer_in_pontis, delete_packages_in_pontis, login_to_external_api, update_customer_in_pontis, update_customer_password_in_pontis
 from app.services.odoo_service import execute_odoo_method
 from app.services.sqlite_service import get_decrypted_password, get_user_record, insert_user_record, update_user_password
 from app.services.sqlite_service import update_user_policies  # Asegúrate de importar la función
-
+from app.utils.plans import PRODUCTS
+from app.core.logging_config import logger
 
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -319,17 +320,14 @@ async def update_user(request: Request):
 # ----------------------------------------------------------
 
 
-    """
-    Actualiza los datos del usuario, crea una factura y registra el pago.
-    Se requiere que el 'id_usuario' enviado en el body coincida con el 'user_id' del token.
-    Se realizan múltiples validaciones sobre los datos ingresados.
-    """
+ 
     try:
 
         # ----------------------------------------------------------
         # # Obtener el user_id del token y comparar con el id_usuario del body
         # token_user_id = token_payload.get("user_id")
         # ----------------------------------------------------------
+
 
         
         body = await request.json()
@@ -563,26 +561,13 @@ async def update_user(request: Request):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
     
+ # DE ACA PARA ABJO ES NUEVO------------------------------------------------------------------------------------------   
 
 @router.post("/search_contact")
 async def search_contact(request: Request):
 # async def search_contact(request: Request):
-    """
-    Busca en Odoo la información de un contacto a partir del CI recibido en el body.
-    Requiere un token válido y que el usuario que consulta sea interno.
-    
-    Valida que exista una factura pagada para el contacto y que la fecha actual esté dentro de
-    30 días desde la fecha de emisión. Además, se verifica que el contacto no esté asociado a ningún usuario.
-    
-    Devuelve un JSON con:
-      - id: id del contacto (en formato string)
-      - fullName: nombre completo del contacto
-      - ci: el CI (campo 'vat')
-      - phone: móvil del contacto
-      - email: email del contacto
-      - planId: id del plan (extraído de la factura pagada)
-    """
     try:
+        logger.info("Buscando contacto en Odoo...")
         # Conectar a Odoo
         conn = get_odoo_connection()
 
@@ -592,56 +577,52 @@ async def search_contact(request: Request):
         if not ci:
             raise HTTPException(status_code=400, detail="El campo 'ci' es obligatorio.")
 
-        # Buscar el contacto por CI en Odoo, usando el campo "vat"
-        #contacts = execute_odoo_method(
-        #    conn, 'res.partner', 'search_read',
-        #    [[('vat', '=', ci)]],
-        #    {'fields': ['id', 'name', 'mobile', 'email', 'vat']}
-        #)
         contacts = execute_odoo_method(
             conn, 'res.partner', 'search_read',
             [[('email', '=', ci)]],
             {'fields': ['id', 'name', 'mobile', 'email', 'vat']}
         )
+        logger.info("Contactos encontrados: %s", contacts)
 
         if not contacts:
             raise HTTPException(status_code=404, detail="Contacto no encontrado.")
         contact_info = contacts[0]
-        # Verificar que el contacto NO esté asociado a ningún usuario
-        associated_users = execute_odoo_method(
-            conn, 'res.users', 'search_read',
-            [[('partner_id', '=', contact_info["id"])]],
-            {'fields': ['id']}
-        )
-        if associated_users:
-            raise HTTPException(status_code=400, detail="El contacto ya está asociado a un usuario.")
+        logger.info("Información del contacto: %s", contact_info)
 
-        # Verificar que el contacto tenga una factura pagada
-        invoices = execute_odoo_method(
-            conn, 'account.move', 'search_read',
-            [[('partner_id', '=', contact_info["id"]), ('payment_state', '=', 'paid')]],
-            {'fields': ['invoice_date', 'invoice_line_ids'], 'order': 'invoice_date desc', 'limit': 1}
-        )
-        if not invoices:
-            raise HTTPException(status_code=404, detail="No se encontró factura pagada para este contacto.")
-        invoice = invoices[0]
+        # obtenemos el id contacts 
+        id_contact = contacts[0]['id']
+        logger.info("ID del contacto obtenido: %s", id_contact)
+
+        # obtenemos los id de los planes permitidos
+        allowed_plan_ids = list(PRODUCTS.values())
+        logger.info("IDs de planes permitidos: %s", allowed_plan_ids)
+
+        # Obtener y filtrar facturas válidas
+        valid_invoices_filtered = get_valid_invoices_for_search(conn, id_contact, allowed_plan_ids)
+
+        logger.info("Facturas válidas filtradas: %s", valid_invoices_filtered)
+
+
+        invoice = valid_invoices_filtered[0]
+        logger.info("Factura válida seleccionada: %s", invoice)
+
         invoice_date_str = invoice.get('invoice_date')
-        if not invoice_date_str:
-            raise HTTPException(status_code=500, detail="La factura no tiene fecha de emisión.")
-        invoice_date = datetime.strptime(invoice_date_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-        expiry_date = invoice_date + timedelta(days=30)
-        now = datetime.now(timezone.utc)
-        if now < invoice_date or now > expiry_date:
-            raise HTTPException(status_code=400, detail="El período de servicio ha expirado.")
 
-        # Obtener el planId desde la factura: leer la primera línea de la factura
-        invoice_lines = execute_odoo_method(
-            conn, 'account.move.line', 'read', [invoice['invoice_line_ids']],
-            {'fields': ['product_id']}
-        )
-        if not invoice_lines or not invoice_lines[0].get('product_id'):
-            raise HTTPException(status_code=500, detail="No se pudo determinar el plan de servicio.")
-        planId = invoice_lines[0]['product_id'][0]
+        invoice_date = datetime.strptime(invoice_date_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        logger.info("Fecha de la factura: %s", invoice_date)
+        expiry_date = invoice_date + timedelta(days=28) # TODO: CAMBIAR A 30
+        logger.info("Fecha de expiración: %s", expiry_date)
+        now = datetime.now(timezone.utc)
+        logger.info("Fecha actual: %s", now)
+
+        if now >= invoice_date and now <= expiry_date:
+            logger.info("El período de servicio aún sigue activo. No se puede continuar.")
+            raise HTTPException(status_code=400, detail="El período de servicio aún sigue activo.")
+        else:
+            logger.info("El período de servicio ha expirado. Se puede continuar.")
+
+        planId = get_plan_id_from_invoice(conn, invoice)
+        logger.info("ID del plan obtenido: %s", planId)
 
         # Preparar el JSON de respuesta con la estructura solicitada
         result = {
@@ -652,6 +633,7 @@ async def search_contact(request: Request):
             "email": contact_info.get("email", ""),
             "planId": planId
         }
+        logger.info("Respuesta generada: %s", result)
         return result
 
     except HTTPException as http_err:
@@ -660,6 +642,7 @@ async def search_contact(request: Request):
         raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
 
 
+ # ------------------------------------------------------------------------------------------   
 
 
 def generate_random_password(length=8) -> str:
@@ -690,36 +673,7 @@ def split_name(full_name: str) -> tuple:
 # ------------------------------------------------------------------------------------------------------------
 @router.patch("/activate_user")
 async def activate_user(request: Request):
-    """
-    Activa al usuario en Odoo y Pontis basándose en los datos del contacto.  
-    Requisitos obligatorios en el body:
-      - num_ref: (string) Número de referencia para la factura (no vacío).
-      - id_plan: (int) ID del plan.
-      - id_contact: (int) ID del contacto en Odoo.
-    Opcionales:
-      - id_user: (int) Si se envía, debe corresponder al usuario asociado al contacto.
-      - razon_social, tipo_doc, num_doc, extension, id_metodo_pago, num_tarjeta:  
-        Datos opcionales para actualizar el contacto y para la factura.
-        
-    Flujo:
-      1. Validar y parsear los campos obligatorios y opcionales.
-      2. Conectar a Odoo y obtener el contacto usando `id_contact`.
-      3. Si se envía `id_user`:
-             - Verificar que el contacto ya esté vinculado a ese usuario.
-         Si NO se envía `id_user`:
-             - Verificar que el contacto no tenga usuario asociado.
-             - Crear un usuario portal en Odoo vinculado al contacto.
-      4. Actualizar los campos del contacto en Odoo con los datos opcionales.
-      5. Buscar si existe una factura pagada para este contacto:
-             - Si existe y el plan está activo (hoy está dentro de [fecha_factura, fecha_factura+30 días]), se detiene el flujo.
-             - Si no, se procede a crear una nueva factura.
-      6. Crear la factura en Odoo (en draft) usando `num_ref` para el campo `payment_reference`, y confirmarla.
-      7. Registrar el pago de la factura.
-      8. Obtener la contraseña actual del usuario (desencriptada) y construir el payload para Pontis.
-      9. Llamar a la API de Pontis para activar el usuario y obtener las credenciales.
-      10. Enviar por correo las credenciales al usuario.
-      11. Actualizar en SQLite la aceptación de las políticas.
-    """
+
     try:
         # 1. Parsear y validar campos obligatorios
         body = await request.json()
@@ -1006,192 +960,347 @@ async def activate_user(request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 # ------------------------------------------------------------------------------------------------------------
+ # DE ACA PARA ABJO ES NUEVO------------------------------------------------------------------------------------------   
+
+def get_valid_invoices_for_search(conn, id_contact: int, allowed_plan_ids: list) -> list:
+
+    logger.debug("Iniciando búsqueda de facturas pagadas para contacto ID: %s", id_contact)
+    invoices = execute_odoo_method(
+        conn, 'account.move', 'search_read',
+        [[('partner_id', '=', id_contact), ('payment_state', '=', 'paid')]],
+        {'fields': ['invoice_date', 'invoice_line_ids']}
+    )
+    logger.debug("Facturas encontradas: %s", invoices)
+    if not invoices:
+        raise HTTPException(status_code=404, detail="No se encontró factura pagada para este contacto.")
+    
+    valid_invoices_filtered = []
+    for inv in invoices:
+        invoice_line_ids = inv.get('invoice_line_ids', [])
+        logger.debug("Factura %s - Líneas de factura: %s", inv.get('invoice_date'), invoice_line_ids)
+        if not invoice_line_ids:
+            continue
+        invoice_lines = execute_odoo_method(
+            conn, 'account.move.line', 'read', [invoice_line_ids],
+            {'fields': ['product_id']}
+        )
+        logger.debug("Líneas de factura leídas: %s", invoice_lines)
+        for line in invoice_lines:
+            product_id = line.get('product_id')
+            logger.debug("Revisando línea de factura, product_id: %s", product_id)
+            if product_id and product_id[0] in allowed_plan_ids:
+                valid_invoices_filtered.append(inv)
+                logger.debug("Factura agregada por contener producto permitido: %s", inv)
+                break
+    if not valid_invoices_filtered:
+        raise HTTPException(status_code=404, detail="No se encontró factura pagada válida para este contacto emitida hoy.")
+    
+    sorted_invoices = sorted(valid_invoices_filtered, key=lambda x: x.get('invoice_date'), reverse=True)
+    logger.debug("Facturas válidas ordenadas: %s", sorted_invoices)
+    return sorted_invoices
 
 
+# ------------------------------------------------------------------------------------------------------------
 
+def get_valid_invoices(conn, id_contact: int, allowed_plan_ids: list) -> list:
+
+    logger.debug("Iniciando búsqueda de facturas pagadas para contacto ID: %s", id_contact)
+    invoices = execute_odoo_method(
+        conn, 'account.move', 'search_read',
+        [[('partner_id', '=', id_contact), ('payment_state', '=', 'paid')]],
+        {'fields': ['invoice_date', 'invoice_line_ids']}
+    )
+    logger.debug("Facturas encontradas: %s", invoices)
+    if not invoices:
+        raise HTTPException(status_code=404, detail="No se encontró factura pagada para este contacto.")
+    
+    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    logger.debug("Fecha de hoy (UTC): %s", today_str)
+    valid_invoices = [inv for inv in invoices if inv.get('invoice_date') == today_str]
+    logger.debug("Facturas emitidas hoy: %s", valid_invoices)
+    if not valid_invoices:
+        raise HTTPException(status_code=400, detail=" La última factura del contacto no fue emitida hoy, no se puede activar.")
+    
+    valid_invoices_filtered = []
+    for inv in valid_invoices:
+        invoice_line_ids = inv.get('invoice_line_ids', [])
+        logger.debug("Factura %s - Líneas de factura: %s", inv.get('invoice_date'), invoice_line_ids)
+        if not invoice_line_ids:
+            continue
+        invoice_lines = execute_odoo_method(
+            conn, 'account.move.line', 'read', [invoice_line_ids],
+            {'fields': ['product_id']}
+        )
+        logger.debug("Líneas de factura leídas: %s", invoice_lines)
+        for line in invoice_lines:
+            product_id = line.get('product_id')
+            logger.debug("Revisando línea de factura, product_id: %s", product_id)
+            if product_id and product_id[0] in allowed_plan_ids:
+                valid_invoices_filtered.append(inv)
+                logger.debug("Factura agregada por contener producto permitido: %s", inv)
+                break
+    if not valid_invoices_filtered:
+        raise HTTPException(status_code=404, detail="No se encontró factura pagada válida para este contacto emitida hoy.")
+    
+    sorted_invoices = sorted(valid_invoices_filtered, key=lambda x: x.get('invoice_date'), reverse=True)
+    logger.debug("Facturas válidas ordenadas: %s", sorted_invoices)
+    return sorted_invoices
+
+def get_plan_id_from_invoice(conn, invoice: dict) -> int:
+    """
+    Obtiene el ID del plan de servicio a partir de la primera línea de la factura.
+    """
+    logger.debug("Obteniendo plan desde factura: %s", invoice)
+    invoice_lines = execute_odoo_method(
+        conn, 'account.move.line', 'read', [invoice.get('invoice_line_ids')],
+        {'fields': ['product_id']}
+    )
+    logger.debug("Líneas de factura para plan: %s", invoice_lines)
+    if not invoice_lines or not invoice_lines[0].get('product_id'):
+        raise HTTPException(status_code=500, detail="No se pudo determinar el plan de servicio.")
+    plan_id = invoice_lines[0]['product_id'][0]
+    logger.debug("Plan ID obtenido: %s", plan_id)
+    return plan_id
+
+# para la ruta cuando el contacto YA está asociado a un usuario
+async def handle_associated_user_flow(conn, id_contact: int, contact_info: dict) -> dict:
+    # Nota: si es que asociado a un usuario, asumimos que que hizo una compra previa y se le generó un usuario en la base de datos de SQLite
+    associated_users = execute_odoo_method(
+        conn, 'res.users', 'search_read',
+        [[('partner_id', '=', id_contact)]],
+        {'fields': ['id'], 'context': {'active_test': False}}
+    )
+    id_user = associated_users[0]["id"]
+    logger.info("Se encontró usuario asociado con ID: %s", id_user)
+
+    # Obtener los datos del usuario desde SQLite
+    user_record = get_user_record(id_user)
+    logger.debug("Registro del usuario en SQLite: %s", user_record)
+    
+    # Obtener el password desencriptado del usuario existente
+    existing_password = get_decrypted_password(id_user)
+    logger.debug("Contraseña existente (desencriptada): %s", existing_password)
+    
+    allowed_plan_ids = list(PRODUCTS.values())
+    logger.debug("IDs de planes permitidos: %s", allowed_plan_ids)
+    
+    # Obtener y filtrar facturas válidas
+    valid_invoices_filtered = get_valid_invoices(conn, id_contact, allowed_plan_ids)
+    invoice = valid_invoices_filtered[0]
+    logger.info("Factura válida seleccionada: %s", invoice)
+    
+    invoice_date_str = invoice.get('invoice_date')
+  
+    invoice_date = datetime.strptime(invoice_date_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    logger.debug("Fecha de factura: %s", invoice_date)
+    expiry_date = invoice_date + timedelta(days=30)
+    logger.debug("Fecha de expiración: %s", expiry_date)
+    now = datetime.now(timezone.utc)
+    logger.debug("Fecha actual: %s", now)
+    if now < invoice_date or now > expiry_date:
+        raise HTTPException(status_code=400, detail="El período de servicio ha expirado.")
+    
+    id_plan = get_plan_id_from_invoice(conn, invoice)
+    logger.info("Plan ID obtenido para la factura: %s", id_plan)
+    
+    # Armar el ID para Pontis (concatenar 'MAP0' + id_user)
+    pontis_customer_id = "MAP0" + str(id_user)
+    logger.debug("ID de cliente para Pontis: %s", pontis_customer_id)
+    
+    await login_to_external_api()
+    logger.info("Conexión exitosa a la API externa.")
+       
+    res = await delete_packages_in_pontis(pontis_customer_id)
+
+    if res:
+        logger.info("Paquetes eliminados en Pontis: %s", pontis_customer_id)
+
+
+    update_data_customer = await build_update_customer_data(id_plan)
+    logger.debug("Datos para actualizar en Pontis: %s", update_data_customer)
+
+    update_response = await update_customer_in_pontis(update_data_customer, pontis_customer_id)
+    logger.info("Respuesta de actualización en Pontis: %s", update_response)
+
+    if pontis_customer_id != update_response.get("response"):
+        logger.warning("El ID de cliente de Pontis no coincide con el esperado.")
+    else:
+        logger.info("Cliente actualizado en Pontis correctamente.")
+    
+    # 14. Enviar por correo las credenciales de acceso a Pontis
+    send_pontis_credentials_email(
+        to_email=contact_info.get("email"),
+        subject="Tus credenciales de acceso a M+",
+        pontis_username=pontis_customer_id,  # Ajustar: aquí se usa el ID de cliente para Pontis.
+        pontis_password=existing_password
+    )
+    logger.info("Correo de credenciales enviado a: %s", contact_info.get("email"))
+    
+    return {
+        "detail": "Contacto actualizado en Pontis correctamente.",
+        "pontis_username": pontis_customer_id,
+        "existing_password": existing_password,
+        "update_response": update_response # comentar
+    }
+
+# Helper para la ruta cuando el contacto NO está asociado a ningún usuario
+async def handle_non_associated_user_flow(conn, id_contact: int, contact_info: dict) -> dict:
+    allowed_plan_ids = list(PRODUCTS.values())
+    logger.debug("IDs de planes permitidos: %s", allowed_plan_ids)
+    
+    valid_invoices_filtered = get_valid_invoices(conn, id_contact, allowed_plan_ids)
+    invoice = valid_invoices_filtered[0]
+    logger.info("Factura válida seleccionada: %s", invoice)
+    
+    invoice_date_str = invoice.get('invoice_date')
+   
+    invoice_date = datetime.strptime(invoice_date_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    expiry_date = invoice_date + timedelta(days=30)
+    now = datetime.now(timezone.utc)
+    logger.debug("Fecha de factura: %s, Fecha de expiración: %s, Fecha actual: %s", invoice_date, expiry_date, now)
+    if now < invoice_date or now > expiry_date:
+        raise HTTPException(status_code=400, detail="El período de servicio ha expirado.")
+    
+    id_plan = get_plan_id_from_invoice(conn, invoice)
+    logger.info("Plan ID obtenido para la factura: %s", id_plan)
+    
+    new_password = generate_random_password(8)
+    logger.info("Nueva contraseña generada: %s", new_password)
+    
+    group_portal = execute_odoo_method(
+        conn, 'ir.model.data', 'search_read',
+        [[('model', '=', 'res.groups'), ('module', '=', 'base'), ('name', '=', 'group_portal')]],
+        {'fields': ['res_id'], 'limit': 1}
+    )
+    if not group_portal:
+        raise HTTPException(status_code=500, detail="No se encontró el grupo portal en Odoo.")
+    group_portal_id = group_portal[0]['res_id']
+    logger.debug("ID del grupo portal: %s", group_portal_id)
+    
+    new_user_vals = {
+        'login': contact_info.get("email"),
+        'name': contact_info.get("name"),
+        'email': contact_info.get("email"),
+        'mobile': contact_info.get("mobile"),
+        'password': new_password,
+        'lang': 'es_MX',
+        'partner_id': id_contact,  # Asociamos el usuario al contacto existente
+        'groups_id': [(6, 0, [group_portal_id])]
+    }
+    new_user_id = execute_odoo_method(
+        conn, 'res.users', 'create', [new_user_vals],
+        kwargs={'context': {'no_reset_password': True}}
+    )
+    if not new_user_id:
+        raise HTTPException(status_code=500, detail="No se pudo crear el usuario portal en Odoo.")
+    logger.info("Nuevo usuario creado en Odoo con ID: %s", new_user_id)
+    
+    def split_name(full_name: str) -> tuple:
+        parts = full_name.split()
+        if not parts:
+            return ("", "")
+        if len(parts) == 1:
+            return (parts[0], "")
+        return (parts[0], " ".join(parts[1:]))
+    first_name, last_name = split_name(contact_info.get("name", ""))
+    insert_user_record(new_user_id,
+                       first_name=first_name,
+                       last_name=last_name,
+                       email=contact_info.get("email"),
+                       mobile=contact_info.get("mobile"),
+                       password=new_password)
+    logger.info("Usuario registrado en SQLite con ID: %s", new_user_id)
+    
+    update_user_policies(new_user_id)
+    logger.debug("Políticas de usuario actualizadas en SQLite para ID: %s", new_user_id)
+    
+    updated_contact = execute_odoo_method(conn, 'res.partner', 'read', [[id_contact]])
+    # Obtenemos el id contacto actualizado
+    updated_contact_id = updated_contact[0].get("id")
+    logger.debug("Datos actualizados del contacto: %s", updated_contact_id)
+    if not updated_contact:
+        raise HTTPException(status_code=500, detail="Error al obtener datos actualizados del contacto.")
+    
+    customer_data = build_customer_data(new_user_id, updated_contact, id_plan, new_password)
+    logger.debug("Payload para Pontis: %s", customer_data)
+    
+    await login_to_external_api()
+    logger.info("Conexión exitosa a la API externa.")
+
+    user_name_pontis = "MAP0" + str(new_user_id)
+
+    # activation_response = await create_customer_in_pontis(customer_data)
+    # pontis_username = activation_response["response"]
+
+
+    # if pontis_username != user_name_pontis:
+    #     logger.warning("El ID de usuario en Pontis no coincide con el esperado: %s", pontis_username)
+    # else:
+    #     logger.info("ID de usuario en Pontis: %s", pontis_username)
+
+    # logger.info("Respuesta de activación en Pontis: %s", activation_response)
+
+    
+    send_pontis_credentials_email(
+        to_email=contact_info.get("email"),
+        subject="Tus credenciales de acceso a M+",
+        pontis_username=user_name_pontis,  
+        pontis_password=new_password
+    )
+    logger.info("Correo de credenciales enviado a: %s", contact_info.get("email"))
+    
+    return {
+        "detail": "Contacto activado como usuario portal en Pontis correctamente.",
+        "pontis_username": user_name_pontis,
+        "new_password": new_password,
+        # "activation_response": activation_response
+    }
 
 @router.post("/activate_contact_from_odoo")
 async def activate_contact_portal(request: Request):
-    """
-    Activa un contacto como usuario portal en Odoo y Pontis.
-    
-    Requiere:
-      - Un token válido, cuyo usuario sea interno.
-      - Recibir en el body un JSON con "id_contact" (el ID del contacto en Odoo).
-    
-    Flujo:
-      1. Verifica que el contacto no esté asociado a ningún usuario.
-      2. Revalida que el contacto tenga una factura pagada en Odoo y que la fecha actual
-         se encuentre dentro de [fecha emisión, fecha emisión + 30 días]. Se extrae el planId.
-      3. Genera una contraseña aleatoria.
-      4. Crea un usuario de tipo portal en Odoo asociado a este contacto, sin enviar invitación.
-      5. Registra el nuevo usuario en SQLite y marca las políticas como aceptadas.
-      6. Obtiene los datos actualizados del contacto.
-      7. Llama a build_customer_data pasando (id_user, updated_contact, id_plan, new_password) para armar el payload de activación.
-      8. Llama a la API de Pontis para activar el usuario.
-      9. Si la activación es exitosa, envía por correo las credenciales (usuario y contraseña).
-    """
     try:
         # 1. Obtener id_contact del body
         body = await request.json()
         try:
             id_contact = int(body.get("id_contact"))
         except (TypeError, ValueError):
+            logger.error("Error al convertir 'id_contact' a entero: %s", body.get("id_contact"))
             raise HTTPException(status_code=400, detail="El campo 'id_contact' debe ser un número.")
         if not id_contact:
             raise HTTPException(status_code=400, detail="El campo 'id_contact' es obligatorio.")
-
-        # # 2. Verificar que el usuario que hace la consulta sea interno
-        # token_user_id = token_payload.get("user_id")
-        # # Obtenemos la información del usuario del token:
-        # user_token = execute_odoo_method(
-        #     get_odoo_connection(), 'res.users', 'read', [[token_user_id], ['groups_id']]
-        # )
-        # if not user_token:
-        #     raise HTTPException(status_code=404, detail="Usuario del token no encontrado.")
-        # internal_group = execute_odoo_method(
-        #     get_odoo_connection(), 'ir.model.data', 'search_read',
-        #     [[('model', '=', 'res.groups'), ('module', '=', 'base'), ('name', '=', 'group_user')]],
-        #     {'fields': ['res_id'], 'limit': 1}
-        # )
-        # if not internal_group:
-        #     raise HTTPException(status_code=500, detail="No se encontró el grupo interno.")
-        # internal_group_id = internal_group[0]['res_id']
-        # if internal_group_id not in user_token[0]['groups_id']:
-        #     raise HTTPException(status_code=403, detail="No estás autorizado para usar este endpoint.")
-
+        logger.info("Procesando activación para contacto ID: %s", id_contact)
+        
         # 3. Buscar el contacto en Odoo
         conn = get_odoo_connection()
         contact_data = execute_odoo_method(
             conn, 'res.partner', 'read', [[id_contact]],
             {'fields': ['id', 'name', 'mobile', 'email', 'vat']}
         )
+        logger.debug("Datos del contacto obtenidos: %s", contact_data)
         if not contact_data:
             raise HTTPException(status_code=404, detail="Contacto no encontrado.")
         contact_info = contact_data[0]
-
+        logger.info("Contacto encontrado: %s", contact_info.get("id"))
+        
         # 4. Verificar que el contacto NO esté asociado a ningún usuario
         associated_users = execute_odoo_method(
             conn, 'res.users', 'search_read',
             [[('partner_id', '=', id_contact)]],
             {'fields': ['id'], 'context': {'active_test': False}}
         )
+        logger.debug("Usuarios asociados: %s", associated_users)
+        
         if associated_users:
-            raise HTTPException(status_code=400, detail="El contacto ya está asociado a un usuario.")
+            # RUTA A: Contacto ya asociado a un usuario
+            result = await handle_associated_user_flow(conn, id_contact, contact_info)
+        else:
+            # RUTA B: Contacto no asociado a ningún usuario
+            result = await handle_non_associated_user_flow(conn, id_contact, contact_info)
+        return result
 
-        # 5. Verificar que el contacto tenga una factura pagada
-        invoices = execute_odoo_method(
-            conn, 'account.move', 'search_read',
-            [[('partner_id', '=', id_contact), ('payment_state', '=', 'paid')]],
-            {'fields': ['invoice_date', 'invoice_line_ids'], 'order': 'invoice_date desc', 'limit': 1}
-        )
-        if not invoices:
-            raise HTTPException(status_code=404, detail="No se encontró factura pagada para este contacto.")
-        invoice = invoices[0]
-        invoice_date_str = invoice.get('invoice_date')
-        if not invoice_date_str:
-            raise HTTPException(status_code=500, detail="La factura no tiene fecha de emisión.")
-        invoice_date = datetime.strptime(invoice_date_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-        expiry_date = invoice_date + timedelta(days=30)
-        now = datetime.now(timezone.utc)
-        if now < invoice_date or now > expiry_date:
-            raise HTTPException(status_code=400, detail="El período de servicio ha expirado.")
-
-        # 6. Obtener el planId desde la factura: leer la primera línea de la factura
-        invoice_lines = execute_odoo_method(
-            conn, 'account.move.line', 'read', [invoice['invoice_line_ids']],
-            {'fields': ['product_id']}
-        )
-        if not invoice_lines or not invoice_lines[0].get('product_id'):
-            raise HTTPException(status_code=500, detail="No se pudo determinar el plan de servicio.")
-        id_plan = invoice_lines[0]['product_id'][0]
-
-        # 7. Generar una contraseña aleatoria
-        new_password = generate_random_password(8)
-
-        # 8. Crear el usuario de tipo portal en Odoo asociado al contacto.
-        # Importante: Asignamos partner_id para evitar crear un nuevo contacto.
-        group_portal = execute_odoo_method(
-            conn, 'ir.model.data', 'search_read',
-            [[('model', '=', 'res.groups'), ('module', '=', 'base'), ('name', '=', 'group_portal')]],
-            {'fields': ['res_id'], 'limit': 1}
-        )
-        if not group_portal:
-            raise HTTPException(status_code=500, detail="No se encontró el grupo portal en Odoo.")
-        group_portal_id = group_portal[0]['res_id']
-        new_user_vals = {
-            'login': contact_info.get("email"),
-            'name': contact_info.get("name"),
-            'email': contact_info.get("email"),
-            'mobile': contact_info.get("mobile"),
-            'password': new_password,
-            'lang': 'es_MX',
-            'partner_id': id_contact,  # Asociamos el usuario al contacto existente
-            'groups_id': [(6, 0, [group_portal_id])]
-        }
-        new_user_id = execute_odoo_method(
-            conn, 'res.users', 'create', [new_user_vals],
-            kwargs={'context': {'no_reset_password': True}}
-        )
-        if not new_user_id:
-            raise HTTPException(status_code=500, detail="No se pudo crear el usuario portal en Odoo.")
-
-        # 9. Registrar el nuevo usuario en SQLite
-        def split_name(full_name: str) -> tuple:
-            parts = full_name.split()
-            if not parts:
-                return ("", "")
-            if len(parts) == 1:
-                return (parts[0], "")
-            return (parts[0], " ".join(parts[1:]))
-        first_name, last_name = split_name(contact_info.get("name", ""))
-        insert_user_record(new_user_id,
-                           first_name=first_name,
-                           last_name=last_name,
-                           email=contact_info.get("email"),
-                           mobile=contact_info.get("mobile"),
-                           password=new_password)
-
-        # 10. Actualizar las políticas en SQLite
-        update_user_policies(new_user_id)
-
-        # 11. Obtener el contacto actualizado desde Odoo
-        updated_contact = execute_odoo_method(conn, 'res.partner', 'read', [[id_contact]])
-        if not updated_contact:
-            raise HTTPException(status_code=500, detail="Error al obtener datos actualizados del contacto.")
-
-        # 12. Construir el payload de activación para Pontis usando build_customer_data.
-        # En este método se envían: id_user, updated_contact, id_plan y la nueva contraseña (new_password).
-        customer_data = build_customer_data(new_user_id, updated_contact, id_plan, new_password)
-        
-        # 13. Llamar a la API de activación de Pontis
-        await login_to_external_api()
-
-        # -------------------------------------------------------------------------
-        # activation_response = await create_customer_in_pontis(customer_data)
-        # if not activation_response.get("response"):
-        #     raise HTTPException(status_code=500, detail="No se pudieron activar las credenciales en Pontis.")
-        # pontis_username = activation_response["response"]
-
-        # 14. Enviar por correo las credenciales de acceso a Pontis
-        send_pontis_credentials_email(
-            to_email=contact_info.get("email"),
-            subject="Tus credenciales de acceso a Pontis",
-            # pontis_username=pontis_username,
-            pontis_username="pontis_username",
-            pontis_password=new_password
-        )
-
-        return {
-            "detail": "Contacto activado como usuario portal en Pontis correctamente.",
-            # "pontis_username": pontis_username,
-            "new_password": new_password,
-            # "activation_response": activation_response
-        }
-        
     except HTTPException as http_err:
+        logger.error("HTTPException: %s", http_err.detail)
         raise http_err
     except Exception as e:
+        logger.exception("Error interno:")
         raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
-
-

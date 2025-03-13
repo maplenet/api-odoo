@@ -3,8 +3,10 @@ from app.core.email_validation import is_valid_email
 from app.core.security import verify_token
 from app.core.database import get_odoo_connection
 from app.services.odoo_service import execute_odoo_method
+import logging
 
 router = APIRouter(prefix="/contacts", tags=["contacts"])
+logger = logging.getLogger(__name__)
 
 @router.get("/search")
 async def search_contacts(
@@ -198,11 +200,70 @@ async def update_contact(contact_id: int, request: Request, token_payload: dict 
         # Se envía solo el mensaje de error sin prefijo adicional.
         raise HTTPException(status_code=500, detail=str(e))
     
+ # DE ACA PARA ABJO ES NUEVO------------------------------------------------------------------------------------------   
 
 
+@router.post("/create")
+async def create_contact(request: Request):
+    try:
+        # Leer y validar el JSON recibido
+        data = await request.json()
+        nombre = data.get("name", "").strip()
+        apellido = data.get("last_name", "").strip()
+        pais = data.get("country", "").strip()
+        ciudad = data.get("city", "").strip()
+        celular = data.get("phone", "").strip()
+        correo = data.get("email", "").strip()
+
+        # Validación de campos obligatorios
+        if not (nombre and apellido and pais and ciudad and celular and correo):
+            raise HTTPException(
+                status_code=400, 
+                detail="Todos los campos (nombre, apellido, pais, ciudad, celular y correo) son obligatorios."
+            )
+        logger.info("Datos recibidos para crear contacto: %s %s", nombre, apellido)
+
+        # Combinar nombre y apellido para formar el 'name' del contacto en Odoo
+        full_name = f"{nombre} {apellido}"
+
+        contact_payload = {
+            "name": full_name,
+            "mobile": celular,
+            "email": correo,
+            "city": ciudad,
+            "comment": pais
+        }
+        logger.debug("Payload para crear contacto en Odoo: %s", contact_payload)
+
+        # Conectar a Odoo
+        conn = get_odoo_connection()
+
+        # Crear el contacto en Odoo usando el método 'create'
+        new_contact_id = execute_odoo_method(conn, "res.partner", "create", [contact_payload])
+        logger.info("ID de nuevo contacto creado en Odoo: %s", new_contact_id)
+        if not new_contact_id:
+            raise HTTPException(status_code=500, detail="No se pudo crear el contacto en Odoo.")
+
+        # Leer los datos del contacto recién creado
+        created_contact = execute_odoo_method(conn, "res.partner", "read", [[new_contact_id]])
+        if not created_contact:
+            raise HTTPException(status_code=500, detail="Error al leer el contacto creado.")
+        logger.debug("Datos del contacto creado: %s", created_contact[0])
+
+        return {
+            "detail": "Success.",
+            "contact": created_contact[0]
+        }
+
+    except HTTPException as http_err:
+        logger.error("HTTPException: %s", http_err.detail)
+        raise http_err
+    except Exception as e:
+        logger.exception("Error interno al crear contacto:")
+        raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
 
 
-
+ # ------------------------------------------------------------------------------------------   
 
 
 # Todo: Verificar de todos los endpoints las validaciones de los campos requeridos

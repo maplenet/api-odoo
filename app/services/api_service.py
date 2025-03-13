@@ -2,6 +2,7 @@ import httpx
 from datetime import datetime, timedelta
 from fastapi import HTTPException
 from datetime import datetime, timedelta
+from app.config import settings
 
 
 async def login_to_external_api():
@@ -9,7 +10,7 @@ async def login_to_external_api():
     Realiza una solicitud HTTP POST a la API externa para autenticarse.
     """
     # url = "http://18.117.185.30:3000/api/auth/login"
-    url = "https://api-pontis.henryqh.me/api/auth/login"
+    url = f"{settings.URL_BASE_API_PONTIS}/auth/login"
     payload = {
         "customer_id": "subop_maplenet1",
         "password": "s8Xh5671O9xR"
@@ -178,7 +179,7 @@ async def create_customer_in_pontis(customer_data):
     :param customer_data: Datos del cliente para crear.
     :return: Respuesta de la API.
     """
-    url = "https://api-pontis.henryqh.me/api/customers/create"
+    url = f"{settings.URL_BASE_API_PONTIS}/api/customers/create"
     headers = {
         "Content-Type": "application/json"
     }
@@ -206,7 +207,7 @@ async def update_customer_password_in_pontis(customer_id: str, new_password: str
     :param new_password: La nueva contraseña en texto plano.
     :return: La respuesta JSON de la API de Pontis.
     """
-    url = f"https://api-pontis.henryqh.me/api/customers/{customer_id}"
+    url = f"{settings.URL_BASE_API_PONTIS}/customers/{customer_id}"
     payload = {
         "customerAccount": {
             "password": new_password
@@ -222,6 +223,103 @@ async def update_customer_password_in_pontis(customer_id: str, new_password: str
         raise HTTPException(
             status_code=e.response.status_code,
             detail=f"Error al actualizar la contraseña en Pontis: {e.response.text}"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error interno al conectarse a la API de Pontis: {str(e)}"
+        )
+    
+ # DE ACA PARA ABJO ES NUEVO------------------------------------------------------------------------------------------   
+
+async def delete_packages_in_pontis(pontis_customer_id):
+    url = f"{settings.URL_BASE_API_PONTIS}/customers/deleteServices/MAP006" # TODO: CAMBIAR A PONTIS_CUSTOMER_ID
+    headers = {"Content-Type": "application/json"}
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.delete(url, headers=headers)
+            response.raise_for_status()  # Lanza excepción si la respuesta no es exitosa
+            return response.json()
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(
+            status_code=e.response.status_code,
+            detail=f"Error al eliminar los paquetes en Pontis: {e.response.text}"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error interno al conectarse a la API de Pontis: {str(e)}"
+        )
+
+    return true
+    
+
+async def build_update_customer_data(id_plan):
+    effective_dt = datetime.now().strftime("%d/%m/%Y")
+    expire_dt = (datetime.now() + timedelta(days=30)).strftime("%d/%m/%Y")
+
+    # Definir los valores de auto provisión según el plan
+    if id_plan == 6:
+        autoProvCountStationary = "1"
+        autoProvisionCountMobile = "2"
+        services = [
+            {"effectiveDt": effective_dt, "expireDt": expire_dt, "serviceMenu": {"serviceMenuId": "6212"}},
+            {"effectiveDt": effective_dt, "expireDt": expire_dt, "serviceMenu": {"serviceMenuId": "6294"}}
+        ]
+    elif id_plan == 8:
+        autoProvCountStationary = "2"
+        autoProvisionCountMobile = "3"
+        services = [
+            {"effectiveDt": effective_dt, "expireDt": expire_dt, "serviceMenu": {"serviceMenuId": "6212"}},
+            {"effectiveDt": effective_dt, "expireDt": expire_dt, "serviceMenu": {"serviceMenuId": "6217"}},
+            {"effectiveDt": effective_dt, "expireDt": expire_dt, "serviceMenu": {"serviceMenuId": "6294"}}
+        ]
+    elif id_plan == 9:
+        autoProvCountStationary = "2"
+        autoProvisionCountMobile = "3"
+        services = [
+            {"effectiveDt": effective_dt, "expireDt": expire_dt, "serviceMenu": {"serviceMenuId": "6212"}},
+            {"effectiveDt": effective_dt, "expireDt": expire_dt, "serviceMenu": {"serviceMenuId": "6217"}},
+            {"effectiveDt": effective_dt, "expireDt": expire_dt, "serviceMenu": {"serviceMenuId": "6293"}},
+            {"effectiveDt": effective_dt, "expireDt": expire_dt, "serviceMenu": {"serviceMenuId": "6294"}}
+        ]
+    else:
+        # Valor por defecto: se utiliza la configuración de id_plan 8
+        autoProvCountStationary = "2"
+        autoProvisionCountMobile = "3"
+        services = [
+            {"effectiveDt": effective_dt, "expireDt": expire_dt, "serviceMenu": {"serviceMenuId": "6212"}}, # TODO: MODIFICAR O BORRAR TODO ESTO
+            # {"effectiveDt": effective_dt, "expireDt": expire_dt, "serviceMenu": {"serviceMenuId": "6217"}},
+            # {"effectiveDt": effective_dt, "expireDt": expire_dt, "serviceMenu": {"serviceMenuId": "6293"}},
+            # {"effectiveDt": effective_dt, "expireDt": expire_dt, "serviceMenu": {"serviceMenuId": "6294"}} 
+        ]
+
+    # Construir el payload de actualización
+    payload = {
+        "customer": {
+            "autoProvCountStationary": autoProvCountStationary,
+            "autoProvisionCountMobile": autoProvisionCountMobile
+        },
+        "subscribeService": services
+    }
+    return payload
+
+
+
+async def update_customer_in_pontis(update_data_customer, pontis_customer_id):
+
+    url = f"{settings.URL_BASE_API_PONTIS}/customers/MAP006" # TODO: CAMBIAR A PONTIS_CUSTOMER_ID
+    headers = {"Content-Type": "application/json"}
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.put(url, json=update_data_customer, headers=headers)
+            response.raise_for_status()  # Lanza excepción si la respuesta no es exitosa
+            return response.json()
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(
+            status_code=e.response.status_code,
+            detail=f"Error al actualizar el cliente en Pontis: {e.response.text}"
         )
     except Exception as e:
         raise HTTPException(
