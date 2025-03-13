@@ -443,6 +443,7 @@ async def update_user(request: Request, token_payload: dict = Depends(verify_tok
 
         # Conexión a Pontis
         await login_to_external_api()
+        updated_contact = execute_odoo_method(conn, 'res.partner', 'read', [[partner_id]])
         customer_data = build_customer_data(id_user, updated_contact, id_plan, plain_password)
 
         # -------------------------------------------------------------------------
@@ -515,7 +516,6 @@ async def update_user(request: Request, token_payload: dict = Depends(verify_tok
         payment_register_id = execute_odoo_method(conn, 'account.payment.register', 'create', [[payment_data]], {'context': context})
         execute_odoo_method(conn, 'account.payment.register', 'action_create_payments', [[payment_register_id[0]]])
         
-        updated_contact = execute_odoo_method(conn, 'res.partner', 'read', [[partner_id]])
 
 
        # ---------------------------------------------------------------------
