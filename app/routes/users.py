@@ -452,6 +452,39 @@ async def update_user(request: Request):
         if not success:
             raise HTTPException(status_code=500, detail="No se pudo actualizar el usuario.")
         
+
+
+        # ----------------------------------------------------------------------------
+
+
+         # Obtener el password desencriptado del usuario (nuevo)
+        plain_password = get_decrypted_password(id_user)
+
+        # Conexión a Pontis
+        await login_to_external_api()
+        updated_contact = execute_odoo_method(conn, 'res.partner', 'read', [[partner_id]])
+        customer_data = build_customer_data(id_user, updated_contact, id_plan, plain_password)
+
+        # -------------------------------------------------------------------------
+        create_customer_response = await create_customer_in_pontis(customer_data)
+
+        # Verificar que se obtuvo correctamente el nombre de usuario de Pontis
+        if not create_customer_response.get("response"):
+            raise HTTPException(status_code=500, detail="No se obtuvieron credenciales de Pontis.")
+        pontis_username = create_customer_response["response"]
+
+        # obtenemos el email del usuario desde SQLite
+        user_record = get_user_record(id_user)
+        email = user_record.get("email")
+
+         # Enviar credenciales al usuario por correo
+        send_pontis_credentials_email(
+            to_email=email,  # Ajusta: aquí deberías usar el correo del usuario, p.ej. la variable email.
+            subject="Tus credenciales de acceso:",
+            pontis_username=pontis_username,
+            pontis_password=plain_password
+        )
+        
         # ----------------------- Flujo de creación de factura -----------------------
         
         product = product_data[0]
@@ -502,7 +535,6 @@ async def update_user(request: Request):
         payment_register_id = execute_odoo_method(conn, 'account.payment.register', 'create', [[payment_data]], {'context': context})
         execute_odoo_method(conn, 'account.payment.register', 'action_create_payments', [[payment_register_id[0]]])
         
-        updated_contact = execute_odoo_method(conn, 'res.partner', 'read', [[partner_id]])
 
 
         # Obtener el password desencriptado del usuario (nuevo)

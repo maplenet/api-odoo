@@ -400,20 +400,20 @@ async def create_contact(request: Request):
 #     except Exception as e:
 #         raise HTTPException(status_code=500, detail=str(e))
 
-# # Actualizar un contacto
-# @router.patch("/{contact_id}")
-# def update_contact(contact_id: int, contact: dict, token:str = Depends(verify_token)):
-#     conn = get_odoo_connection()
-#     try:
-#         result = conn['models'].execute_kw(
-#             conn['db'], conn['uid'], conn['password'],
-#             'res.partner',
-#             'write',
-#             [[contact_id], contact]
-#         )
-#         return {"success": result}
-#     except Exception as e:
-#         raise HTTPException(status_code=500, detail=str(e))
+# Actualizar un contacto
+@router.patch("/{contact_id}")
+def update_contact(contact_id: int, contact: dict, token:str = Depends(verify_token)):
+    conn = get_odoo_connection()
+    try:
+        result = conn['models'].execute_kw(
+            conn['db'], conn['uid'], conn['password'],
+            'res.partner',
+            'write',
+            [[contact_id], contact]
+        )
+        return {"success": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 # # Eliminar un contacto
 # @router.delete("/{contact_id}")
