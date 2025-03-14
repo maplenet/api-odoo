@@ -8,8 +8,8 @@ EMAIL_REGEX = re.compile(r'^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,4}$', re.IGNOREC
 BLACKLISTED_DOMAINS = {
     # '10minutemail.com',
     'fremont.nodebalancer.linode.com',
-    # 'yopmail.com',
-    # 'temp-mail.org',
+    'yopmail.com',
+    'temp-mail.org',
     'cool.fr.nf',
     'jetable.fr.nf',
     'nospam.ze.tc',
