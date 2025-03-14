@@ -4,6 +4,8 @@ from app.core.security import verify_token
 from app.core.database import get_odoo_connection
 from datetime import date
 
+from app.services.odoo_service import execute_odoo_method
+
 
 router = APIRouter(prefix="/invoices", tags=["invoices"])
 
@@ -28,9 +30,17 @@ async def get_invoice(invoice_id: int, token: str = Depends(verify_token)):
         if not invoice_data:
             raise HTTPException(status_code=404, detail="No se encontró la factura solicitada.")
 
+        # obtenemos el invoice_line_ids
+        invoice_line_ids = invoice_data[0]['invoice_line_ids']
+        invoice_lines = conn['models'].execute_kw(
+            conn['db'], conn['uid'], conn['password'],
+            'account.move.line', 'read', [invoice_line_ids], {'fields': ['product_id', 'quantity', 'price_unit']}
+        )
+
         return {
             "success": True,
-            "invoice_data": invoice_data
+            "invoice_data": invoice_data,
+            "invoice_lines": invoice_lines
         }
 
     except Exception as e:
@@ -604,5 +614,53 @@ async def get_journals(token: str = Depends(verify_token)):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al obtener diarios: {str(e)}")
+
+ # DE ACA PARA ABJO ES NUEVO------------------------------------------------------------------------------------------   
+
+@router.post("/confirm_invoice/{invoice_id}")
+async def confirm_invoice(invoice_id: int):
+
+    try:
+        # Conectar a Odoo
+        conn = get_odoo_connection()
+
+        # Leer la factura para verificar su estado
+        invoice_data = execute_odoo_method(
+            conn,
+            'account.move',
+            'read',
+            [[invoice_id]],
+            {'fields': ['id', 'state']}
+        )
+        if not invoice_data:
+            raise HTTPException(status_code=404, detail="Factura no encontrada.")
+        
+        invoice = invoice_data[0]
+        if invoice.get('state') != 'draft':
+            raise HTTPException(status_code=400, detail="La factura no está en estado borrador.")
+
+        # Confirmar (publicar) la factura en Odoo
+        post_result = execute_odoo_method(
+            conn,
+            'account.move',
+            'action_post',
+            [[invoice_id]]
+        )
+
+        # Volver a leer la factura para verificar el nuevo estado
+        updated_invoice = execute_odoo_method(
+            conn,
+            'account.move',
+            'read',
+            [[invoice_id]],
+            {'fields': ['id', 'state']}
+        )[0]
+
+        return {"success": True, "invoice": updated_invoice}
+
+    except HTTPException as http_err:
+        raise http_err
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al confirmar la factura: {str(e)}")
 
 

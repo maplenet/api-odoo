@@ -1,11 +1,14 @@
-from fastapi import APIRouter, HTTPException, Query, Depends
+from fastapi import APIRouter, HTTPException, Query, Depends, Request
+from app.core.email_validation import is_valid_email
 from app.core.security import verify_token
 from app.core.database import get_odoo_connection
+from app.core.email_utils import send_final_match_email
 from app.services.odoo_service import execute_odoo_method
 
+import logging
+
 router = APIRouter(prefix="/contacts", tags=["contacts"])
-
-
+logger = logging.getLogger(__name__)
 
 @router.get("/search")
 async def search_contacts(
@@ -28,7 +31,9 @@ async def search_contacts(
               "l10n_bo_district": <valor de l10n_bo_district>,
               "mobile": <número de móvil>,
               "email": <correo electrónico>,
-              "vat": <valor del campo vat>
+              "vat": <valor del campo vat>,
+              "l10n_latam_identification_type_id": <valor>,
+              "l10n_bo_business_name": <valor>
             }
     """
     # Validación inicial: el Query ya asegura que se envíe 'email'
@@ -44,48 +49,283 @@ async def search_contacts(
         'res.partner',
         'search_read',
         [[('email', 'ilike', email)]],
-        {'fields': ["id", "name", "company_registry", "l10n_bo_district", "mobile", "email", "vat"]}
+        {'fields': ["id", "name", "company_registry", "l10n_bo_district", "mobile", "email", "city", "state_id", "country_id"]}
     )
+
+
     
     total = len(contacts)
     if total == 0:
         raise HTTPException(status_code=404, detail="No se encontraron contactos para el correo proporcionado.")
     
+    # Extraer los IDs de los contactos para la búsqueda masiva de usuarios asociados
+    contact_ids = [contact["id"] for contact in contacts]
+    
+    # Buscar en res.users todos los usuarios cuyo partner_id esté en la lista de contact_ids
+    associated_users = execute_odoo_method(
+        conn,
+        'res.users',
+        'search_read',
+        [[('partner_id', 'in', contact_ids)]],
+        {'fields': ['id', 'partner_id']}
+    )
+    
+    # Crear un diccionario para mapear partner_id al id de usuario
+    partner_to_user = { user["partner_id"][0]: user["id"] for user in associated_users if user.get("partner_id") }
+    
     results = []
-    # Para cada contacto encontrado, se busca si está asociado a algún usuario
+    # Recorrer los contactos y agregar el id_user si existe
     for contact in contacts:
-        associated_users = execute_odoo_method(
-            conn,
-            'res.users',
-            'search_read',
-            [[('partner_id', '=', contact["id"])]],
-            {'fields': ['id']}
-        )
-        if associated_users:
-            id_user = associated_users[0]["id"]
-        else:
-            id_user = ""
-        
-        # Se crea un nuevo diccionario con la estructura deseada,
-        # renombrando la clave 'id' a 'id_contact' y agregando 'id_user'
+        id_user = partner_to_user.get(contact["id"], "")
         new_contact = {
             "id_contact": contact["id"],
             "id_user": id_user,
             "name": contact.get("name", ""),
-            "company_registry": contact.get("company_registry", ""),
-            "l10n_bo_district": contact.get("l10n_bo_district", ""),
+            "ci": contact.get("company_registry", ""),
+            "direction": contact.get("l10n_bo_district", ""),
             "mobile": contact.get("mobile", ""),
             "email": contact.get("email", ""),
-            "vat": contact.get("vat", "")
+            "city": contact.get("city", ""),
+            "state_id": contact.get("state_id", ""),
+            "country_id": contact.get("country_id", "")
         }
         results.append(new_contact)
     
     return {"total": len(results), "contacts": results}
 
 
+@router.patch("/{contact_id}")
+async def update_contact(contact_id: int, request: Request, token_payload: dict = Depends(verify_token)):
+    """
+    Actualiza ciertos campos de un contacto en Odoo.
+
+    Se requieren:
+      - El 'contact_id' en la URL.
+      - En el body, se debe enviar al menos:
+          - "name": El nombre del contacto (no vacío ni solo espacios).
+          - "email": El correo electrónico (no vacío, sin espacios y en formato válido).
+      - Los campos opcionales "mobile", "company_registry", "l10n_bo_district", "city" y "state_id"
+        se actualizarán si se proporcionan y no están vacíos.
+      
+    Devuelve un JSON con:
+      - detail: Mensaje de éxito.
+      - updated_fields: Los campos que fueron actualizados.
+    """
+    try:
+        # Leer el JSON enviado en la solicitud
+        data = await request.json()
+
+        # Validar que se envíen los campos obligatorios "name" y "email"
+        if "name" not in data:
+            raise HTTPException(status_code=400, detail="The 'name' field is required.")
+        if "email" not in data:
+            raise HTTPException(status_code=400, detail="The 'email' field is required.")
+
+        # Eliminar espacios en blanco y validar que no queden vacíos
+        name = data["name"].strip()
+        email = data["email"].strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="The 'name' field cannot be empty.")
+        if not email:
+            raise HTTPException(status_code=400, detail="The 'email' field cannot be empty.")
+
+        # Validar formato del email
+        if not is_valid_email(email):
+            raise HTTPException(status_code=400, detail="The email format is not valid.")
+
+        # Inicializar diccionario con los campos obligatorios
+        update_fields = {
+            "name": name,
+            "email": email
+        }
+
+        # Actualizar opcionalmente otros campos si se envían y tienen contenido no vacío
+
+        if "mobile" in data:
+            mobile = str(data["mobile"]).strip()
+            if mobile:
+                update_fields["mobile"] = mobile
+
+        if "ci" in data:
+            company_registry = str(data["ci"]).strip()
+            if company_registry:
+                update_fields["company_registry"] = company_registry
+
+        if "direction" in data:
+            district = str(data["direction"]).strip()
+            if district:
+                update_fields["l10n_bo_district"] = district
+
+        # Validar y actualizar el campo 'city'
+        if "city" in data:
+            city = str(data["city"]).strip()
+            if city:
+                update_fields["city"] = city
+            else:
+                raise HTTPException(status_code=400, detail="The 'city' field cannot be empty.")
+
+        # Validar y actualizar el campo 'state_id'
+        if "state_id" in data:
+            # Se espera que 'state_id' sea un valor numérico o convertible a entero
+            try:
+                state_id = int(data["state_id"])
+                update_fields["state_id"] = state_id
+            except (TypeError, ValueError):
+                raise HTTPException(status_code=400, detail="The 'state_id' field must be a valid number.")
+        
+        try: 
+            update_fields["country_id"] = 29
+        except (TypeError, ValueError):
+                raise HTTPException(status_code=400, detail="The 'country_id' field must be a valid number.")
+
+        # Conectar a Odoo
+        conn = get_odoo_connection()
+
+        # Intentar actualizar el contacto en Odoo
+        result = execute_odoo_method(
+            conn,
+            'res.partner',
+            'write',
+            [[contact_id], update_fields]
+        )
+        if not result:
+            raise HTTPException(status_code=500, detail="Could not update contact in Odoo.")
+
+        return {
+            "detail": "Contact updated successfully.", 
+            # "updated_fields": update_fields
+            }
+
+    except HTTPException as http_err:
+        raise http_err
+    except Exception as e:
+        # Se envía solo el mensaje de error sin prefijo adicional.
+        raise HTTPException(status_code=500, detail=str(e))
+    
+ # DE ACA PARA ABJO ES NUEVO------------------------------------------------------------------------------------------   
+
+
+@router.post("/create")
+async def create_contact(request: Request):
+    try:
+        # Leer y validar el JSON recibido
+        data = await request.json()
+        nombre = data.get("name", "").strip()
+        apellido = data.get("last_name", "").strip()
+        pais = data.get("country", "").strip()
+        ciudad = data.get("city", "").strip()
+        phone = data.get("phone", "").strip()
+        correo = data.get("email", "").strip()
+
+        # Validación de campos obligatorios
+        if not (nombre and apellido and pais and ciudad and phone and correo):
+            raise HTTPException(
+                status_code=400,
+                detail="Todos los campos (name, last_name, country, city, phone y email) son obligatorios."
+            )
+        logger.info("Datos recibidos para crear contacto: %s %s", nombre, apellido)
+
+        # Combinar nombre y apellido para formar el 'name' del contacto en Odoo
+        full_name = f"{nombre} {apellido}"
+        logger.debug("Nombre completo para contacto: %s", full_name)
+
+        # Conectar a Odoo
+        conn = get_odoo_connection()
+
+        # Buscar el país en Odoo usando el nombre (ilike para búsqueda flexible)
+        country_records = execute_odoo_method(
+            conn,
+            'res.country',
+            'search_read',
+            [[('name', 'ilike', pais)]],
+            {'fields': ['id', 'name']}
+        )
+        if not country_records:
+            raise HTTPException(status_code=404, detail=f"País '{pais}' no encontrado en Odoo.")
+        country_id = country_records[0]['id']
+        logger.info("País encontrado: %s con ID: %s", country_records[0]['name'], country_id)
+
+        # Armar el payload para crear el contacto en Odoo
+        contact_payload = {
+            "name": full_name,     # Se guarda la combinación de name y last_name
+            "mobile": phone,       # Campo 'mobile'
+            "email": correo,       # Campo 'email'
+            "city": ciudad,        # Campo 'city'
+            "country_id": country_id  # Campo 'country_id'
+        }
+        logger.debug("Payload para crear contacto en Odoo: %s", contact_payload)
+
+        # Crear el contacto en Odoo usando el método 'create'
+        new_contact_id = execute_odoo_method(conn, "res.partner", "create", [contact_payload])
+        logger.info("ID de nuevo contacto creado en Odoo: %s", new_contact_id)
+        if not new_contact_id:
+            raise HTTPException(status_code=500, detail="No se pudo crear el contacto en Odoo.")
+
+        # Leer los datos del contacto recién creado
+        created_contact = execute_odoo_method(conn, "res.partner", "read", [[new_contact_id]])
+        if not created_contact:
+            raise HTTPException(status_code=500, detail="Error al leer el contacto creado.")
+        logger.debug("Contacto creado: %s", created_contact[0]['id'])
+
+        # Enviar correo de invitación usando la plantilla de torneo (url_final_match_template.html)
+        logger.info("Enviando correo de invitación para el final del torneo.")
+        send_final_match_email(
+            to_email=correo,
+            subject="ENLACE DE LA FINAL TORNEO AMISTOSO DE VERANO",
+            extra_params={}  # Puedes agregar parámetros adicionales si la plantilla los requiere
+        )
+
+        return {
+            "detail": "Contacto creado y correo enviado con éxito.",
+            "contact_id": new_contact_id
+        }
+
+    except HTTPException as http_err:
+        logger.error("HTTPException en create_contact: %s", http_err.detail)
+        raise http_err
+    except Exception as e:
+        logger.exception("Error interno al crear contacto:")
+        raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
 
 
 
+
+@router.get("/{contact_id}")
+async def get_contact_details(
+    contact_id: int,
+):
+    """
+    Obtiene todos los detalles de un contacto en Odoo a partir de su ID.
+    
+    Parámetros:
+      - contact_id: ID del contacto (entero).
+      - Se requiere un token válido (token_payload).
+    
+    Devuelve:
+      - Un JSON con todos los campos del contacto.  
+        Nota: Si se pasa una lista vacía en 'fields', Odoo devuelve todos los campos disponibles.
+    """
+    # Conectar a Odoo
+    conn = get_odoo_connection()
+    
+    # Obtener todos los campos del contacto (lista vacía => todos)
+    contact_data = execute_odoo_method(
+        conn,
+        'res.partner',
+        'read',
+        [[contact_id]],  # El ID del contacto dentro de una lista
+        {'fields': []}   # Lista vacía para solicitar todos los campos
+    )
+    
+    if not contact_data:
+        raise HTTPException(status_code=404, detail="Contacto no encontrado.")
+    
+    return contact_data[0]
+
+
+
+
+ # ------------------------------------------------------------------------------------------   
 
 
 # Todo: Verificar de todos los endpoints las validaciones de los campos requeridos
@@ -223,19 +463,19 @@ async def search_contacts(
 #         raise HTTPException(status_code=500, detail=str(e))
 
 # Actualizar un contacto
-@router.patch("/{contact_id}")
-def update_contact(contact_id: int, contact: dict, token:str = Depends(verify_token)):
-    conn = get_odoo_connection()
-    try:
-        result = conn['models'].execute_kw(
-            conn['db'], conn['uid'], conn['password'],
-            'res.partner',
-            'write',
-            [[contact_id], contact]
-        )
-        return {"success": result}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+# @router.patch("/{contact_id}")
+# def update_contact(contact_id: int, contact: dict, token:str = Depends(verify_token)):
+#     conn = get_odoo_connection()
+#     try:
+#         result = conn['models'].execute_kw(
+#             conn['db'], conn['uid'], conn['password'],
+#             'res.partner',
+#             'write',
+#             [[contact_id], contact]
+#         )
+#         return {"success": result}
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=str(e))
 
 # # Eliminar un contacto
 # @router.delete("/{contact_id}")
