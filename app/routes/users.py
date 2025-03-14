@@ -19,7 +19,7 @@ router = APIRouter(prefix="/users", tags=["users"])
 
 def _is_valid_password(password: str) -> bool:
     # El password debe ser alfanumérico, tener entre 8 y 40 caracteres, 
-    # al menos 1 mayúscula, 1 minúscula y 1 número.
+    # al menos 1 mayúscula, 1 minúscula y 1 número. 
     pattern = r"^(?=.*[A-Z])(?=.*[a-z])(?=.*\d)[A-Za-z\d]{8,40}$"
     return bool(re.match(pattern, password))
 
@@ -172,7 +172,7 @@ async def change_password(request: Request, token_payload: dict = Depends(verify
         # Actualizar la contraseña en SQLite
         update_user_password(user_id, new_password)
 
-        # --- NUEVO: Actualizar la contraseña en Pontis ---
+        # --- NUEVO: Actualizar la contraseña en Pontis ----
         # Construir el customer_id para Pontis
         pontis_customer_id = "MAP0" + str(user_id)
         pontis_update = await update_customer_password_in_pontis(pontis_customer_id, new_password)
