@@ -1261,16 +1261,22 @@ async def handle_non_associated_user_flow(conn, id_contact: int, contact_info: d
 
     user_name_pontis = "MAP0" + str(new_user_id)
 
-    # activation_response = await create_customer_in_pontis(customer_data)
-    # pontis_username = activation_response["response"]
 
 
-    # if pontis_username != user_name_pontis:
-    #     logger.warning("El ID de usuario en Pontis no coincide con el esperado: %s", pontis_username)
-    # else:
-    #     logger.info("ID de usuario en Pontis: %s", pontis_username)
 
-    # logger.info("Respuesta de activación en Pontis: %s", activation_response)
+    activation_response = await create_customer_in_pontis(customer_data)
+    pontis_username = activation_response["response"]
+
+
+    if pontis_username != user_name_pontis:
+        logger.warning("El ID de usuario en Pontis no coincide con el esperado: %s", pontis_username)
+    else:
+        logger.info("ID de usuario en Pontis: %s", pontis_username)
+
+    logger.info("Respuesta de activación en Pontis: %s", activation_response)
+
+
+
 
     
     send_pontis_credentials_email(
@@ -1285,8 +1291,9 @@ async def handle_non_associated_user_flow(conn, id_contact: int, contact_info: d
         "detail": "Contacto activado como usuario portal en Pontis correctamente.",
         "pontis_username": user_name_pontis,
         "new_password": new_password,
-        # "activation_response": activation_response
+        "activation_response": activation_response
     }
+
 
 @router.post("/activate_contact_from_odoo")
 async def activate_contact_portal(request: Request):
