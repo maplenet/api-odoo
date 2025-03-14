@@ -233,7 +233,8 @@ async def update_customer_password_in_pontis(customer_id: str, new_password: str
  # DE ACA PARA ABJO ES NUEVO------------------------------------------------------------------------------------------   
 
 async def delete_packages_in_pontis(pontis_customer_id):
-    url = f"{settings.URL_BASE_API_PONTIS}/customers/deleteServices/MAP006" # TODO: CAMBIAR A PONTIS_CUSTOMER_ID
+    # url = f"{settings.URL_BASE_API_PONTIS}/customers/deleteServices/MAP006" # TODO: CAMBIAR A PONTIS_CUSTOMER_ID
+    url = f"{settings.URL_BASE_API_PONTIS}/customers/deleteServices/{pontis_customer_id}" 
     headers = {"Content-Type": "application/json"}
     try:
         async with httpx.AsyncClient() as client:
@@ -289,9 +290,9 @@ async def build_update_customer_data(id_plan):
         autoProvisionCountMobile = "3"
         services = [
             {"effectiveDt": effective_dt, "expireDt": expire_dt, "serviceMenu": {"serviceMenuId": "6212"}}, # TODO: MODIFICAR O BORRAR TODO ESTO
-            # {"effectiveDt": effective_dt, "expireDt": expire_dt, "serviceMenu": {"serviceMenuId": "6217"}},
-            # {"effectiveDt": effective_dt, "expireDt": expire_dt, "serviceMenu": {"serviceMenuId": "6293"}},
-            # {"effectiveDt": effective_dt, "expireDt": expire_dt, "serviceMenu": {"serviceMenuId": "6294"}} 
+            {"effectiveDt": effective_dt, "expireDt": expire_dt, "serviceMenu": {"serviceMenuId": "6217"}},
+            {"effectiveDt": effective_dt, "expireDt": expire_dt, "serviceMenu": {"serviceMenuId": "6293"}},
+            {"effectiveDt": effective_dt, "expireDt": expire_dt, "serviceMenu": {"serviceMenuId": "6294"}} 
         ]
 
     # Construir el payload de actualización
@@ -308,7 +309,9 @@ async def build_update_customer_data(id_plan):
 
 async def update_customer_in_pontis(update_data_customer, pontis_customer_id):
 
-    url = f"{settings.URL_BASE_API_PONTIS}/customers/MAP006" # TODO: CAMBIAR A PONTIS_CUSTOMER_ID
+    # url = f"{settings.URL_BASE_API_PONTIS}/customers/MAP006" # TODO: CAMBIAR A PONTIS_CUSTOMER_ID
+    url = f"{settings.URL_BASE_API_PONTIS}/customers/{pontis_customer_id}" 
+
     headers = {"Content-Type": "application/json"}
     
     try:

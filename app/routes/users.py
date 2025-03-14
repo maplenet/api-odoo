@@ -642,7 +642,7 @@ async def search_contact(request: Request):
 
         invoice_date = datetime.strptime(invoice_date_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
         logger.info("Fecha de la factura: %s", invoice_date)
-        expiry_date = invoice_date + timedelta(days=28) # TODO: CAMBIAR A 30
+        expiry_date = invoice_date + timedelta(days=30) # TODO: CAMBIAR A 30 o a 28
         logger.info("Fecha de expiración: %s", expiry_date)
         now = datetime.now(timezone.utc)
         logger.info("Fecha actual: %s", now)

@@ -2,7 +2,9 @@ from fastapi import APIRouter, HTTPException, Query, Depends, Request
 from app.core.email_validation import is_valid_email
 from app.core.security import verify_token
 from app.core.database import get_odoo_connection
+from app.core.email_utils import send_final_match_email
 from app.services.odoo_service import execute_odoo_method
+
 import logging
 
 router = APIRouter(prefix="/contacts", tags=["contacts"])
@@ -245,11 +247,11 @@ async def create_contact(request: Request):
 
         # Armar el payload para crear el contacto en Odoo
         contact_payload = {
-            "name": full_name,
-            "mobile": phone,
-            "email": correo,
-            "city": ciudad,
-            "country_id": country_id
+            "name": full_name,     # Se guarda la combinación de name y last_name
+            "mobile": phone,       # Campo 'mobile'
+            "email": correo,       # Campo 'email'
+            "city": ciudad,        # Campo 'city'
+            "country_id": country_id  # Campo 'country_id'
         }
         logger.debug("Payload para crear contacto en Odoo: %s", contact_payload)
 
@@ -263,11 +265,19 @@ async def create_contact(request: Request):
         created_contact = execute_odoo_method(conn, "res.partner", "read", [[new_contact_id]])
         if not created_contact:
             raise HTTPException(status_code=500, detail="Error al leer el contacto creado.")
-        logger.debug("Datos del contacto creado: %s", created_contact[0]['id'])
+        logger.debug("Datos del contacto creado: %s", created_contact[0])
+
+        # Enviar correo de invitación usando la plantilla de torneo (url_final_match_template.html)
+        logger.info("Enviando correo de invitación para el final del torneo.")
+        send_final_match_email(
+            to_email=correo,
+            subject="ENLACE DE LA FINAL TORNEO AMISTOSO DE VERANO",
+            extra_params={}  # Puedes agregar parámetros adicionales si la plantilla los requiere
+        )
 
         return {
-            "detail": "Success.",
-            "contact": created_contact[0]['id']
+            "detail": "Contacto creado y correo enviado con éxito.",
+            "contact_id": new_contact_id
         }
 
     except HTTPException as http_err:
@@ -276,6 +286,7 @@ async def create_contact(request: Request):
     except Exception as e:
         logger.exception("Error interno al crear contacto:")
         raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
+
 
 
 
