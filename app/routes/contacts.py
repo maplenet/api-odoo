@@ -265,7 +265,7 @@ async def create_contact(request: Request):
         created_contact = execute_odoo_method(conn, "res.partner", "read", [[new_contact_id]])
         if not created_contact:
             raise HTTPException(status_code=500, detail="Error al leer el contacto creado.")
-        logger.debug("Datos del contacto creado: %s", created_contact[0])
+        logger.debug("Contacto creado: %s", created_contact[0]['id'])
 
         # Enviar correo de invitación usando la plantilla de torneo (url_final_match_template.html)
         logger.info("Enviando correo de invitación para el final del torneo.")
