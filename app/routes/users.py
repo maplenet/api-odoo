@@ -459,11 +459,11 @@ async def update_user(request: Request):
         l10n_bo_extension = body.get("extension")
         id_payment_method = body.get("id_metodo_pago")
         num_card = body.get("num_tarjeta")
+        id_plan2 = body.get("id_plan2")
         
         logger.debug(
-            "Datos opcionales: legal_Name=%s, type_doc=%s, num_doc=%s, "
-            "extension=%s, id_metodo_pago=%s, num_card=%s",
-            legal_Name, type_doc, num_doc, l10n_bo_extension, id_payment_method, num_card
+            "Datos opcionales: legal_Name=%s, type_doc=%s, num_doc=%s, extension=%s, id_metodo_pago=%s, num_card=%s, id_plan2=%s",
+            legal_Name, type_doc, num_doc, l10n_bo_extension, id_payment_method, num_card, id_plan2
         )
 
         # Validación de campos obligatorios
@@ -536,15 +536,40 @@ async def update_user(request: Request):
                 logger.error("num_card contiene caracteres no numéricos: %s", num_card)
                 raise HTTPException(status_code=400, detail="El número de tarjeta solo puede contener números.")
         
-        # Conectar a Odoo
+         # Conectar a Odoo
         logger.info("Conectando a Odoo para validar plan/producto y obtener contacto...")
         conn = get_odoo_connection()
+
+        # ----------------------------------------------------------
+
+        # Obtenemos los ids de los productos
+
+
+
+        if id_plan2 is not None:
+            #cortar espacios en blanco al principio y final
+            id_plan2 = int(id_plan2)
+            # verificar que el id_plan2 no sea vacío
+            if id_plan2 == "":
+                logger.error("El id_plan2 está vacío.")
+                raise HTTPException(status_code=400, detail="El id_plan2 no puede estar vacío.")
+            #verificar que el id_plan2 sea un plan válido
+            if id_plan2 not in PRODUCTS.values():
+                logger.info("Los productos válidos son.", PRODUCTS.values())
+                logger.error("El id_plan2 no es un plan válido.")
+                raise HTTPException(status_code=400, detail="El id_plan2 no es un plan válido.")
+            #obtener los datos del plan desde odoo
+            product_data2 = execute_odoo_method(conn, 'product.product', 'read', [[id_plan2]])
+            logger.debug("Plan2 Odoo encontrado: %s", product_data2[0]['id'])
+        else:
+            id_plan2 = 0
+
+
+
         
-        # Validar que el plan exista y obtener datos del producto
-        plan = execute_odoo_method(conn, 'product.product', 'read', [[id_plan]])
-        if not plan:
-            logger.error("Plan con id_plan=%s no existe en Odoo.", id_plan)
-            raise HTTPException(status_code=404, detail="El plan no existe.")
+
+       
+        # Verificar que el plan sea válido
         product_data = execute_odoo_method(conn, 'product.product', 'read', [[id_plan]])
         if not product_data:
             logger.error("Producto con id_plan=%s no existe en Odoo.", id_plan)
@@ -573,14 +598,16 @@ async def update_user(request: Request):
 
         # 1) Logueo a Pontis
         await login_to_external_api()
+
         logger.debug("Autenticación en Pontis exitosa.")
 
         # pontis_customer_id = "MAP006"                                  # todo: cambiar
         pontis_customer_id = f"MAP0{id_user}"
         # 2) Verificar si el usuario existe en Pontis
         pontis_data = await check_customer_in_pontis(pontis_customer_id) # todo: cambiar
+        logger.debug("Respuesta de pontis: %s", pontis_data)
         pontis_response = pontis_data.get("response")
-        logger.debug("Respuesta de check_customer_in_pontis: %s", pontis_data)
+        logger.debug("Respuesta de check_customer_in_pontis: %s", pontis_response)
 
         if pontis_response is None:
             # No existe en Pontis => no tiene plan activo => se procede normal
@@ -599,11 +626,11 @@ async def update_user(request: Request):
                 logger.info("Paquetes eliminados en Pontis para MAP0%s. Actualizando plan...", id_user)
 
                 # Armamos la data de actualización con base al id_plan
-                update_data_customer = await build_update_customer_data(id_plan)
+                update_data_customer = await build_update_customer_data(id_plan, id_plan2)
                 logger.debug("Payload de actualización para Pontis: %s", update_data_customer)
 
-                update_response = await update_customer_in_pontis(update_data_customer, pontis_customer_id)
-                logger.info("Plan actualizado en Pontis para MAP0%s. Respuesta: %s", id_user, update_response)
+                # update_response = await update_customer_in_pontis(update_data_customer, pontis_customer_id)
+                # logger.info("Plan actualizado en Pontis para MAP0%s. Respuesta: %s", id_user, update_response)
 
                 # OJO: Como ya existe el usuario en Pontis y se actualizó, 
                 #      no se hará create_customer_in_pontis() más adelante.
@@ -644,16 +671,16 @@ async def update_user(request: Request):
         if pontis_response is None:
             # => Caso: no existía => crear en Pontis
             logger.info("Creando usuario en Pontis (no existía).")
-            customer_data = build_customer_data(id_user, updated_contact, id_plan, plain_password)
+            customer_data = build_customer_data(id_user, updated_contact, id_plan, id_plan2, plain_password)
             logger.debug("Payload para create_customer_in_pontis: %s", customer_data)
 
-            create_customer_response = await create_customer_in_pontis(customer_data) # TODO: DESCOMENTAR
-            if not create_customer_response.get("response"):
-                logger.error("No se obtuvieron credenciales de Pontis tras create_customer_in_pontis.")
-                raise HTTPException(status_code=500, detail="No se obtuvieron credenciales de Pontis.")
-            pontis_username = create_customer_response["response"]
-            logger.info("Credenciales en Pontis creadas/obtenidas: %s", pontis_username)
-            # pontis_username = f"MAP0{id_user}" # TODO: Borrar
+            # create_customer_response = await create_customer_in_pontis(customer_data) # TODO: DESCOMENTAR
+            # if not create_customer_response.get("response"):
+            #     logger.error("No se obtuvieron credenciales de Pontis tras create_customer_in_pontis.")
+            #     raise HTTPException(status_code=500, detail="No se obtuvieron credenciales de Pontis.")
+            # pontis_username = create_customer_response["response"]
+            # logger.info("Credenciales en Pontis creadas/obtenidas: %s", pontis_username)
+            pontis_username = f"MAP0{id_user}" # TODO: Borrar
         else:
             # => Caso: ya existía => ya hicimos update si plan estaba expirado
             # Reusamos su ID de Pontis
@@ -691,6 +718,8 @@ async def update_user(request: Request):
         product_name = product['name']
         product_price = product['list_price']
         
+        invoices_lines_list = []
+
         invoice_line = (0, 0, {
             'product_id': product_id,
             'name': product_name,
@@ -698,6 +727,28 @@ async def update_user(request: Request):
             'price_unit': product_price,
             'tax_ids': [(6, 0, [1])],
         })
+
+        # Agregamos el primer producto a la lista
+        invoices_lines_list.append(invoice_line)
+
+        if id_plan2 != 0:
+
+            product2 = product_data2[0]
+            product_id2 = product2['id']
+            product_name2 = product2['name']
+            product_price2 = product2['list_price']
+
+            invoice_line2 = (0, 0, {
+                'product_id': product_id2,
+                'name': product_name2,
+                'quantity': 1,
+                'price_unit': product_price2,
+                'tax_ids': [(6, 0, [1])],
+            })
+
+            invoices_lines_list.append(invoice_line2)
+
+
         
         data_to_create_invoice = {
             'partner_id': partner_id,
@@ -711,7 +762,7 @@ async def update_user(request: Request):
             'vr_nro_tarjeta': num_card,
             'vr_tipo_documento_identidad': type_doc,
             'payment_reference': num_ref,
-            'invoice_line_ids': [invoice_line],
+            'invoice_line_ids': invoices_lines_list,
         }
         logger.debug("Payload para crear factura: %s", data_to_create_invoice)
 

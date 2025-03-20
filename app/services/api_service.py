@@ -31,162 +31,144 @@ async def login_to_external_api():
             detail=f"Error interno al conectarse a la API externa de PONTIS: {str(e)}"
         )
    
-def build_customer_data(id_user, contact_data, id_plan, password):
-
-    contact = contact_data[0]
-
-    # Obtener los últimos 4 dígitos del móvil
-    mobile = contact.get("mobile", "")
-    pin = mobile[-4:] if mobile and len(mobile) >= 4 else "1234"
-
-    if id_plan == 46:
-        effective_dt = "20/03/2025"
-        expire_dt = "20/03/2025"
-    if id_plan == 47:
-        effective_dt = "21/03/2025"
-        expire_dt = "21/03/2025"
-    if id_plan == 48:
-        effective_dt = "25/03/2025"
-        expire_dt = "25/03/2025"
-    if id_plan == 49:  
-        effective_dt = "25/03/2025"
-        expire_dt = "25/03/2025"
+def _compute_dates_for_plan(plan_id: int) -> tuple[str, str]:
+    """
+    Devuelve (effectiveDt, expireDt) con formato 'dd/MM/yyyy' según la lógica
+    de planes especiales (46..49) o la fecha actual +30 días.
+    """
+    if plan_id == 46:
+        return ("20/03/2025", "20/03/2025")
+    elif plan_id == 11: #TODO: CAMBIAR------------
+        return ("21/03/2025", "21/03/2025")
+    elif plan_id == 14: #TODO: CAMBIAR------------
+        return ("25/03/2025", "25/03/2025")
+    elif plan_id == 49:
+        return ("25/03/2025", "25/03/2025")
     else:
-        # Fechas
-        effective_dt = datetime.now().strftime("%d/%m/%Y")
-        expire_dt = (datetime.now() + timedelta(days=30)).strftime("%d/%m/%Y")
+        now = datetime.now()
+        return (
+            now.strftime("%d/%m/%Y"),
+            (now + timedelta(days=30)).strftime("%d/%m/%Y")
+        )
 
-    # Construcción dinámica de la lista de servicios
-    subscribe_service_list = []
-
-    # Servicios obligatorios
-    subscribe_service_list.extend([
-        {
-            "effectiveDt": effective_dt,
-            "expireDt": "",
-            "serviceMenu": {"serviceMenuId": "6213"}  
-        },
-        {
-            "effectiveDt": effective_dt,
-            "expireDt": "",
-            "serviceMenu": {"serviceMenuId": "6214"}  
-        },
-        {
-            "effectiveDt": effective_dt,
-            "expireDt": "",
-            "serviceMenu": {"serviceMenuId": "6215"} 
-        }
-    ])
-
-    if id_plan == 6:
-        subscribe_service_list.extend([
-            {
-                "effectiveDt": effective_dt,
-                "expireDt": expire_dt,
-                "serviceMenu": {"serviceMenuId": "6212"}  
-            },
-            {
-                "effectiveDt": effective_dt,
-                "expireDt": expire_dt,
-                "serviceMenu": {"serviceMenuId": "6294"} 
-            }
-        ])
-
-    if id_plan == 8:
-        subscribe_service_list.extend([
-            {
-                "effectiveDt": effective_dt,
-                "expireDt": expire_dt,
-                "serviceMenu": {"serviceMenuId": "6212"}  
-            },
-            {
-                "effectiveDt": effective_dt,
-                "expireDt": expire_dt,
-                "serviceMenu": {"serviceMenuId": "6217"}  
-            },
-            {
-                "effectiveDt": effective_dt,
-                "expireDt": expire_dt,
-                "serviceMenu": {"serviceMenuId": "6294"} 
-            }
-        ])
-
-    if id_plan == 9:
-        subscribe_service_list.extend([
-            {
-                "effectiveDt": effective_dt,
-                "expireDt": expire_dt,
-                "serviceMenu": {"serviceMenuId": "6212"}  
-            },
-            {
-                "effectiveDt": effective_dt,
-                "expireDt": expire_dt,
-                "serviceMenu": {"serviceMenuId": "6217"}  
-            },
-            {
-                "effectiveDt": effective_dt,
-                "expireDt": expire_dt,
-                "serviceMenu": {"serviceMenuId": "6293"}  
-            },
-            {
-                "effectiveDt": effective_dt,
-                "expireDt": expire_dt,
-                "serviceMenu": {"serviceMenuId": "6294"}  
-            }
-        ])
+def _build_services_for_plan_create(plan_id: int, eff: str, exp: str) -> list:
+    """
+    Arma la lista de servicios para un plan dado en la CREACIÓN de un customer.
+    A diferencia del 'update', aquí tenemos la particularidad de que:
+      - Planes 6,8,9,46..49 añaden sus menús con expireDt=exp
+      - Otros planes: default
+      - Se podría dejar flexible si se necesitan 'obligatorios' o no.
     
-    if id_plan == 46:
-        subscribe_service_list.extend([
-            {
-                "effectiveDt": effective_dt,
-                "expireDt": expire_dt,
-                "serviceMenu": {"serviceMenuId": "6294"} 
-            }
+    NOTA: en tu código original, pones 6213, 6214, 6215 siempre con expireDt = "" (en blanco).
+    """
+    services = []
+    
+    # Plan 6
+    if plan_id == 6:
+        services.extend([
+            {"effectiveDt": eff, "expireDt": exp, "serviceMenu": {"serviceMenuId": "6212"}},
+            {"effectiveDt": eff, "expireDt": exp, "serviceMenu": {"serviceMenuId": "6294"}}
         ])
-    if id_plan == 47:
-        subscribe_service_list.extend([
-            {
-                "effectiveDt": effective_dt,
-                "expireDt": expire_dt,
-                "serviceMenu": {"serviceMenuId": "6294"} 
-            }
+    # Plan 8
+    elif plan_id == 8:
+        services.extend([
+            {"effectiveDt": eff, "expireDt": exp, "serviceMenu": {"serviceMenuId": "6212"}},
+            {"effectiveDt": eff, "expireDt": exp, "serviceMenu": {"serviceMenuId": "6217"}},
+            {"effectiveDt": eff, "expireDt": exp, "serviceMenu": {"serviceMenuId": "6294"}}
         ])
-    if id_plan == 48:
-        subscribe_service_list.extend([
-            {
-                "effectiveDt": effective_dt,
-                "expireDt": expire_dt,
-                "serviceMenu": {"serviceMenuId": "6294"} 
-            }
+    # Plan 9
+    elif plan_id == 9:
+        services.extend([
+            {"effectiveDt": eff, "expireDt": exp, "serviceMenu": {"serviceMenuId": "6212"}},
+            {"effectiveDt": eff, "expireDt": exp, "serviceMenu": {"serviceMenuId": "6217"}},
+            {"effectiveDt": eff, "expireDt": exp, "serviceMenu": {"serviceMenuId": "6293"}},
+            {"effectiveDt": eff, "expireDt": exp, "serviceMenu": {"serviceMenuId": "6294"}}
         ])
-    if id_plan == 49:
-        subscribe_service_list.extend([
-            {
-                "effectiveDt": effective_dt,
-                "expireDt": expire_dt,
-                "serviceMenu": {"serviceMenuId": "6294"} 
-            }
+    # Plan 46..49
+    elif plan_id in [46, 47, 48, 49]:
+        services.extend([
+            {"effectiveDt": eff, "expireDt": exp, "serviceMenu": {"serviceMenuId": "6294"}}
         ])
-
-    if id_plan == 6:
-        autoProvCountStationary = "1"
-        autoProvisionCountMobile = "2"
-    elif id_plan in [8, 9]:
-        autoProvCountStationary = "2"
-        autoProvisionCountMobile = "3"
-    elif id_plan in [46, 47, 48, 49]:
-        autoProvCountStationary = "1"
-        autoProvisionCountMobile = "2"
     else:
-        autoProvCountStationary = "1"
-        autoProvisionCountMobile = "2"
- 
+        # Plan por defecto (si llegas a necesitar)
+        pass
+
+    return services
+
+def _determine_auto_prov_counts(plan_id: int) -> tuple[str, str]:
+    """
+    Devuelve (autoProvCountStationary, autoProvisionCountMobile) 
+    según tu lógica de planes.
+    """
+    if plan_id == 6:
+        return ("1", "2")
+    elif plan_id in [8, 9]:
+        return ("2", "3")
+    elif plan_id in [46, 47, 48, 49]:
+        return ("1", "2")
+    else:
+        # Por defecto
+        return ("1", "2")
+
+def build_customer_data(
+    id_user: int,
+    contact_data: list,
+    id_plan: int,
+    id_plan2: int,
+    password: str
+) -> dict:
+    """
+    Construye el payload de creación (primer alta) de un customer en Pontis.
+    - id_plan2 puede ser 0 => no hay segundo plan.
+    - Los planes 6,8,9,46..49 añaden servicios con expireDt=exp
+    - Se añaden 3 servicios "obligatorios" (6213, 6214, 6215) con expireDt="".
+    """
+    contact = contact_data[0]
+    mobile = contact.get("mobile", "")
+
+    # 1) Calcular las fechas y la lista de servicios "obligatorios"
+    eff1, exp1 = _compute_dates_for_plan(id_plan)
+    # id_plan2
+    eff2, exp2 = ("", "")  # Por si no se usa
+    if id_plan2 != 0:
+        eff2, exp2 = _compute_dates_for_plan(id_plan2)
+
+    # 2) Armar la lista con servicios "obligatorios" (siempre con expireDt = "")
+    #   tal cual tu código original
+    subscribe_service_list = [
+        {"effectiveDt": eff1, "expireDt": "", "serviceMenu": {"serviceMenuId": "6213"}},
+        {"effectiveDt": eff1, "expireDt": "", "serviceMenu": {"serviceMenuId": "6214"}},
+        {"effectiveDt": eff1, "expireDt": "", "serviceMenu": {"serviceMenuId": "6215"}}
+    ]
+
+    # 3) Agregar los servicios del primer plan
+    services_plan1 = _build_services_for_plan_create(id_plan, eff1, exp1)
+    subscribe_service_list.extend(services_plan1)
+
+    # 4) Si hay un segundo plan
+    if id_plan2 != 0:
+        services_plan2 = _build_services_for_plan_create(id_plan2, eff2, exp2)
+        subscribe_service_list.extend(services_plan2)
+
+    # 5) autoProvCountStationary, autoProvisionCountMobile
+    #   => podrías decidir cómo combinar ambos planes si hay 2. 
+    #   Ejemplo: tomar el mayor de ambos
+    apc1, apm1 = _determine_auto_prov_counts(id_plan)
+    if id_plan2 != 0:
+        apc2, apm2 = _determine_auto_prov_counts(id_plan2)
+        autoProvCountStationary = str(max(int(apc1), int(apc2)))
+        autoProvisionCountMobile = str(max(int(apm1), int(apm2)))
+    else:
+        autoProvCountStationary = apc1
+        autoProvisionCountMobile = apm1
+
+    # 6) Construir el payload final
     customer_data = {
         "customer": {
             "autoProvCountStationary": autoProvCountStationary,
             "autoProvisionCount": "0",
             "autoProvisionCountMobile": autoProvisionCountMobile,
-            "customerId": "MAP0"+str(id_user),
+            "customerId": "MAP0" + str(id_user),
             "favoritesEnabled": "Y",
             "firstName": contact.get("name", ""),
             "hasVod": "Y",
@@ -199,13 +181,13 @@ def build_customer_data(id_user, contact_data, id_plan, password):
             "multicastenabled": "N"
         },
         "customerAccount": {
-            "effectiveDt": effective_dt,
+            "effectiveDt": eff1,  # El primer plan define effectiveDt de la cuenta
             "expireDt": "",
-            "primaryAudioLanguage": "spa", 
+            "primaryAudioLanguage": "spa",
             "secondaryAudioLanguage": "eng",
             "primarySubtitleLanguage": "spa",
             "secondarySubtitleLanguage": "eng",
-            "login": "MAP0"+str(id_user),
+            "login": "MAP0" + str(id_user),
             "password": password
         },
         "customerInfo": {
@@ -311,40 +293,28 @@ async def delete_packages_in_pontis(pontis_customer_id):
     return true
     
 
-async def build_update_customer_data(id_plan):
-
-
-    if id_plan in [46, 47, 48, 49]:
-        # Si el id_plan es 46, effective_dt y  expire_dt seran ambos el 20/03/2025 
-        if id_plan == 46:
-            effective_dt = "20/03/2025"
-            expire_dt = "20/03/2025"
-        # Si el id_plan es 47, effective_dt y  expire_dt seran ambos el 21/03/2025
-        if id_plan == 47:
-            effective_dt = "21/03/2025"
-            expire_dt = "21/03/2025"
-        # Si el id_plan es 48, effective_dt y  expire_dt seran ambos el 21/03/2025
-        if id_plan == 48:
-            effective_dt = "25/03/2025"
-            expire_dt = "25/03/2025"
-        # Si el id_plan es 49, effective_dt y  expire_dt seran ambos el 25/03/2025
-        if id_plan == 49:
-            effective_dt = "25/03/2025"
-            expire_dt = "25/03/2025"
-    else:
-        effective_dt = datetime.now().strftime("%d/%m/%Y")
-        expire_dt = (datetime.now() + timedelta(days=30)).strftime("%d/%m/%Y")
-
-
-    # Definir los valores de auto provisión según el plan
-    if id_plan == 6:
+def _build_services_for_plan(plan_id: int, effective_dt: str, expire_dt: str) -> tuple[str, str, list]:
+    """
+    Dado un plan_id y sus fechas, devuelve:
+      - autoProvCountStationary (str)
+      - autoProvisionCountMobile (str)
+      - la lista de servicios (list) que corresponden a ese plan.
+    
+    Ajusta según tu propia lógica de planes 6, 8, 9, 46-49, etc.
+    """
+    # Valores por defecto
+    autoProvCountStationary = "2"
+    autoProvisionCountMobile = "3"
+    services = []
+    
+    if plan_id == 6:
         autoProvCountStationary = "1"
         autoProvisionCountMobile = "2"
         services = [
             {"effectiveDt": effective_dt, "expireDt": expire_dt, "serviceMenu": {"serviceMenuId": "6212"}},
             {"effectiveDt": effective_dt, "expireDt": expire_dt, "serviceMenu": {"serviceMenuId": "6294"}}
         ]
-    elif id_plan == 8:
+    elif plan_id == 8:
         autoProvCountStationary = "2"
         autoProvisionCountMobile = "3"
         services = [
@@ -352,7 +322,7 @@ async def build_update_customer_data(id_plan):
             {"effectiveDt": effective_dt, "expireDt": expire_dt, "serviceMenu": {"serviceMenuId": "6217"}},
             {"effectiveDt": effective_dt, "expireDt": expire_dt, "serviceMenu": {"serviceMenuId": "6294"}}
         ]
-    elif id_plan == 9:
+    elif plan_id == 14:
         autoProvCountStationary = "2"
         autoProvisionCountMobile = "3"
         services = [
@@ -361,31 +331,61 @@ async def build_update_customer_data(id_plan):
             {"effectiveDt": effective_dt, "expireDt": expire_dt, "serviceMenu": {"serviceMenuId": "6293"}},
             {"effectiveDt": effective_dt, "expireDt": expire_dt, "serviceMenu": {"serviceMenuId": "6294"}}
         ]
-    elif id_plan in [46, 47, 48, 49]:
+    elif plan_id in [46, 47, 48, 49]:
+        # Ejemplo de tu caso especial
         autoProvCountStationary = "1"
         autoProvisionCountMobile = "2"
         services = [
-            # {"effectiveDt": effective_dt, "expireDt": expire_dt, "serviceMenu": {"serviceMenuId": "6212"}},
             {"effectiveDt": effective_dt, "expireDt": expire_dt, "serviceMenu": {"serviceMenuId": "6294"}}
         ]
     else:
-        # Valor por defecto: se utiliza la configuración de id_plan 8
+        # Plan por defecto (ejemplo)
         autoProvCountStationary = "2"
         autoProvisionCountMobile = "3"
         services = [
-            {"effectiveDt": effective_dt, "expireDt": expire_dt, "serviceMenu": {"serviceMenuId": "6212"}}, # TODO: MODIFICAR O BORRAR TODO ESTO
+            {"effectiveDt": effective_dt, "expireDt": expire_dt, "serviceMenu": {"serviceMenuId": "6212"}},
             {"effectiveDt": effective_dt, "expireDt": expire_dt, "serviceMenu": {"serviceMenuId": "6217"}},
             {"effectiveDt": effective_dt, "expireDt": expire_dt, "serviceMenu": {"serviceMenuId": "6293"}},
-            {"effectiveDt": effective_dt, "expireDt": expire_dt, "serviceMenu": {"serviceMenuId": "6294"}} 
+            {"effectiveDt": effective_dt, "expireDt": expire_dt, "serviceMenu": {"serviceMenuId": "6294"}}
         ]
+    
+    return autoProvCountStationary, autoProvisionCountMobile, services
 
-    # Construir el payload de actualización
+
+async def build_update_customer_data(id_plan: int, id_plan2: int = 0) -> dict:
+    """
+    Construye el payload para actualizar los paquetes en Pontis.
+    Si id_plan2 != 0, se combinan ambos planes en un mismo subscribeService.
+    """
+    # 1) Calcular fechas y servicios para el primer plan
+    eff1, exp1 = _compute_dates_for_plan(id_plan)
+    apc1, apm1, services1 = _build_services_for_plan(id_plan, eff1, exp1)
+
+    # 2) Si existe un segundo plan, calculamos y unimos
+    if id_plan2 != 0:
+        eff2, exp2 = _compute_dates_for_plan(id_plan2)
+        apc2, apm2, services2 = _build_services_for_plan(id_plan2, eff2, exp2)
+        
+        # Decide cómo quieres combinar autoProvCountStationary y autoProvisionCountMobile.
+        # Ejemplo: tomar el máximo
+        autoProvCountStationary = str(max(int(apc1), int(apc2)))
+        autoProvisionCountMobile = str(max(int(apm1), int(apm2)))
+        
+        # Unir las listas de servicios
+        all_services = services1 + services2
+    else:
+        # Solo un plan
+        autoProvCountStationary = apc1
+        autoProvisionCountMobile = apm1
+        all_services = services1
+
+    # 3) Construir el payload final
     payload = {
         "customer": {
             "autoProvCountStationary": autoProvCountStationary,
             "autoProvisionCountMobile": autoProvisionCountMobile
         },
-        "subscribeService": services
+        "subscribeService": all_services
     }
     return payload
 
@@ -419,7 +419,9 @@ async def check_customer_in_pontis(pontis_customer_id: str) -> dict:
     Llama al endpoint GET /getCustomer/<pontis_customer_id> en la API de Pontis.
     Retorna el JSON completo si existe, o un dict con "response": None si no existe.
     """
-    url = f"{settings.OTT_URL_BASE_API}/customers/getCustomer/{pontis_customer_id}"
+    # url = f"{settings.OTT_URL_BASE_API}/customers/getCustomer/{pontis_customer_id}"
+    url = f"{settings.OTT_URL_BASE_API}/customers/getCustomer/MAP006"   #TODO: CAMBIAR------------
+
     
     logger.debug("Consultando API Pontis en URL: %s", url)
     try:
