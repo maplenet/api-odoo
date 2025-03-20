@@ -106,6 +106,40 @@ def send_pontis_credentials_email(to_email: str, subject: str, pontis_username: 
         raise HTTPException(status_code=500, detail=f"Error al enviar el correo de credenciales de acceso.: {str(e)}")
     
 
+def send_pontis_credentials_email_v2(to_email: str, subject: str, pontis_username: str, pontis_password: str):
+    """
+    Envía un correo con las credenciales para acceder al portal de Pontis usando la plantilla
+    'pontis_credentials_template.html'.
+    """
+    try:
+        template_path = Path(__file__).parent / "templates" / "pontis_credentials_template_v2.html"
+        with open(template_path, "r", encoding="utf-8") as file:
+            html_template = file.read()
+        # Reemplazar los placeholders por los valores reales
+        html_content = html_template.replace("{{ pontis_username }}", pontis_username)\
+                                    .replace("{{ pontis_password }}", pontis_password)
+
+        server = SMTP(settings.EMAIL_SERVER, settings.EMAIL_PORT)
+        if settings.EMAIL_TLS:
+            server.starttls()
+
+        username = settings.EMAIL_USERNAME.encode('utf-8').decode('utf-8')
+        password = settings.EMAIL_PASSWORD.encode('utf-8').decode('utf-8')
+
+        server.login(username, password)
+        msg = MIMEMultipart()
+        msg['From'] = settings.EMAIL_FROM
+        msg['To'] = to_email
+        msg['Subject'] = subject
+        msg.attach(MIMEText(html_content, 'html'))
+
+        server.sendmail(settings.EMAIL_FROM, to_email, msg.as_string())
+        server.quit()
+    except Exception as e:
+        print("Error al enviar el correo de credenciales de Pontis:", e)
+        raise HTTPException(status_code=500, detail=f"Error al enviar el correo de credenciales de acceso.: {str(e)}")
+    
+
 def send_final_match_email(to_email: str, subject: str, extra_params: dict):
 
     try:

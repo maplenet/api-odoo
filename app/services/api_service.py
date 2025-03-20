@@ -9,7 +9,7 @@ async def login_to_external_api():
     """
     Realiza una solicitud HTTP POST a la API externa para autenticarse.
     """
-    url = f"{settings.URL_BASE_API_PONTIS}/auth/login"
+    url = f"{settings.OTT_URL_BASE_API}/auth/login"
     payload = {
         "customer_id": f"{settings.OTT_USERNAME}",
         "password": f"{settings.OTT_PASSWORD}"
@@ -50,11 +50,6 @@ def build_customer_data(id_user, contact_data, id_plan, password):
     subscribe_service_list.extend([
         {
             "effectiveDt": effective_dt,
-            "expireDt": expire_dt,
-            "serviceMenu": {"serviceMenuId": "6212"}  
-        },
-        {
-            "effectiveDt": effective_dt,
             "expireDt": "",
             "serviceMenu": {"serviceMenuId": "6213"}  
         },
@@ -75,12 +70,22 @@ def build_customer_data(id_user, contact_data, id_plan, password):
             {
                 "effectiveDt": effective_dt,
                 "expireDt": expire_dt,
+                "serviceMenu": {"serviceMenuId": "6212"}  
+            },
+            {
+                "effectiveDt": effective_dt,
+                "expireDt": expire_dt,
                 "serviceMenu": {"serviceMenuId": "6294"} 
             }
         ])
 
     if id_plan == 8:
         subscribe_service_list.extend([
+            {
+                "effectiveDt": effective_dt,
+                "expireDt": expire_dt,
+                "serviceMenu": {"serviceMenuId": "6212"}  
+            },
             {
                 "effectiveDt": effective_dt,
                 "expireDt": expire_dt,
@@ -95,6 +100,11 @@ def build_customer_data(id_user, contact_data, id_plan, password):
 
     if id_plan == 9:
         subscribe_service_list.extend([
+            {
+                "effectiveDt": effective_dt,
+                "expireDt": expire_dt,
+                "serviceMenu": {"serviceMenuId": "6212"}  
+            },
             {
                 "effectiveDt": effective_dt,
                 "expireDt": expire_dt,
@@ -131,8 +141,8 @@ def build_customer_data(id_user, contact_data, id_plan, password):
     if id_plan == 48:
         subscribe_service_list.extend([
             {
-                "effectiveDt": "21/03/2025",
-                "expireDt": "21/03/2025",
+                "effectiveDt": "25/03/2025",
+                "expireDt": "25/03/2025",
                 "serviceMenu": {"serviceMenuId": "6294"} 
             }
         ])
@@ -213,7 +223,7 @@ async def create_customer_in_pontis(customer_data):
     :param customer_data: Datos del cliente para crear.
     :return: Respuesta de la API.
     """
-    url = f"{settings.URL_BASE_API_PONTIS}/customers/create"
+    url = f"{settings.OTT_URL_BASE_API}/customers/create"
     headers = {
         "Content-Type": "application/json"
     }
@@ -241,7 +251,7 @@ async def update_customer_password_in_pontis(customer_id: str, new_password: str
     :param new_password: La nueva contraseña en texto plano.
     :return: La respuesta JSON de la API de Pontis.
     """
-    url = f"{settings.URL_BASE_API_PONTIS}/customers/{customer_id}"
+    url = f"{settings.OTT_URL_BASE_API}/customers/{customer_id}"
     payload = {
         "customerAccount": {
             "password": new_password
@@ -267,7 +277,7 @@ async def update_customer_password_in_pontis(customer_id: str, new_password: str
  # DE ACA PARA ABJO ES NUEVO------------------------------------------------------------------------------------------   
 
 async def delete_packages_in_pontis(pontis_customer_id):
-    url = f"{settings.URL_BASE_API_PONTIS}/customers/deleteServices/{pontis_customer_id}" 
+    url = f"{settings.OTT_URL_BASE_API}/customers/deleteServices/{pontis_customer_id}" 
     headers = {"Content-Type": "application/json"}
     try:
         async with httpx.AsyncClient() as client:
@@ -302,8 +312,8 @@ async def build_update_customer_data(id_plan):
             expire_dt = "21/03/2025"
         # Si el id_plan es 48, effective_dt y  expire_dt seran ambos el 21/03/2025
         if id_plan == 48:
-            effective_dt = "21/03/2025"
-            expire_dt = "21/03/2025"
+            effective_dt = "25/03/2025"
+            expire_dt = "25/03/2025"
         # Si el id_plan es 49, effective_dt y  expire_dt seran ambos el 25/03/2025
         if id_plan == 49:
             effective_dt = "25/03/2025"
@@ -342,7 +352,7 @@ async def build_update_customer_data(id_plan):
         autoProvCountStationary = "1"
         autoProvisionCountMobile = "2"
         services = [
-            {"effectiveDt": effective_dt, "expireDt": expire_dt, "serviceMenu": {"serviceMenuId": "6212"}},
+            # {"effectiveDt": effective_dt, "expireDt": expire_dt, "serviceMenu": {"serviceMenuId": "6212"}},
             {"effectiveDt": effective_dt, "expireDt": expire_dt, "serviceMenu": {"serviceMenuId": "6294"}}
         ]
     else:
@@ -370,7 +380,7 @@ async def build_update_customer_data(id_plan):
 
 async def update_customer_in_pontis(update_data_customer, pontis_customer_id):
 
-    url = f"{settings.URL_BASE_API_PONTIS}/customers/{pontis_customer_id}" 
+    url = f"{settings.OTT_URL_BASE_API}/customers/{pontis_customer_id}" 
 
     headers = {"Content-Type": "application/json"}
     
@@ -396,7 +406,7 @@ async def check_customer_in_pontis(pontis_customer_id: str) -> dict:
     Llama al endpoint GET /getCustomer/<pontis_customer_id> en la API de Pontis.
     Retorna el JSON completo si existe, o un dict con "response": None si no existe.
     """
-    url = f"{settings.URL_BASE_API_PONTIS}/customers/getCustomer/{pontis_customer_id}"
+    url = f"{settings.OTT_URL_BASE_API}/customers/getCustomer/{pontis_customer_id}"
     
     logger.debug("Consultando API Pontis en URL: %s", url)
     try:
