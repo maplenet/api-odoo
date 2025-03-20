@@ -1,0 +1,23 @@
+__pycache__/
+**/__pycache__/
+**/*.pyc
+images/
+venv/
+algo.py
+main copy.py
+main copy2.py
+model_external_api.py
+models.py
+query_db.py
+verification.db
+.vscode/
+.env
+.env.prod
+.env.test
+start.sh
+Untitled-3.py
+edit.py
+estructura.txt
+app.log
+
+database/
