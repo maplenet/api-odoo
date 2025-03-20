@@ -165,8 +165,8 @@ def build_customer_data(id_user, contact_data, id_plan, password):
         autoProvCountStationary = "1"
         autoProvisionCountMobile = "2"
     else:
-        autoProvCountStationary = "2"
-        autoProvisionCountMobile = "3"
+        autoProvCountStationary = "1"
+        autoProvisionCountMobile = "2"
  
     customer_data = {
         "customer": {
