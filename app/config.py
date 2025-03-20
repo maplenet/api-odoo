@@ -28,6 +28,7 @@ class Settings(BaseSettings):
 	OTT_URL_BASE_API: str = Field(..., env="OTT_URL_BASE_API")
 	OTT_USERNAME: str = Field(..., env="OTT_USERNAME")
 	OTT_PASSWORD: str = Field(..., env="OTT_PASSWORD")
+	SENDGRID_API_KEY: str = Field(..., env="SENDGRID_API_KEY")
 
 	class Config:
 		env_file = ".env"
