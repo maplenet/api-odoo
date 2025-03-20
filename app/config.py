@@ -28,7 +28,8 @@ class Settings(BaseSettings):
 	OTT_URL_BASE_API: str = Field(..., env="OTT_URL_BASE_API")
 	OTT_USERNAME: str = Field(..., env="OTT_USERNAME")
 	OTT_PASSWORD: str = Field(..., env="OTT_PASSWORD")
-
+	URL_BASE_API_PONTIS: str = Field(..., env="URL_BASE_API_PONTIS")
+	
 	class Config:
 		env_file = ".env"
 		env_file_encoding = "utf-8"
