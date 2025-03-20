@@ -5,7 +5,7 @@ import re
 from app.core.email_validation import is_valid_email
 from app.core.security import verify_token
 from app.core.database import get_odoo_connection, get_sqlite_connection
-from app.core.email_utils import send_pontis_credentials_email
+from app.core.email_utils import send_pontis_credentials_email, send_pontis_credentials_email_v2
 from datetime import datetime, timedelta, timezone
 from app.services.api_service import build_customer_data, build_update_customer_data, check_customer_in_pontis, check_subscribe_services_expiration, create_customer_in_pontis, delete_packages_in_pontis, login_to_external_api, update_customer_in_pontis, update_customer_password_in_pontis
 from app.services.odoo_service import execute_odoo_method
@@ -665,14 +665,24 @@ async def update_user(request: Request):
         email = user_record.get("email")
         logger.debug("Email obtenido de SQLite: %s", email)
 
-        # Enviar credenciales al usuario por correo
-        logger.info("Enviando credenciales de Pontis al correo: %s", email)
-        send_pontis_credentials_email(
-            to_email=email,
-            subject="Tus credenciales de acceso:",
-            pontis_username=pontis_username,
-            pontis_password=plain_password
-        )
+        if id_plan in [46, 47, 48, 49]:
+            # Enviar credenciales al usuario por correo
+            logger.info("Enviando credenciales de Pontis al correo: %s", email)
+            send_pontis_credentials_email_v2(
+                to_email=email,
+                subject="Tus credenciales de acceso:",
+                pontis_username=pontis_username,
+                pontis_password=plain_password
+            )
+        else:
+            # Enviar credenciales al usuario por correo
+            logger.info("Enviando credenciales de Pontis al correo: %s", email)
+            send_pontis_credentials_email(
+                to_email=email,
+                subject="Tus credenciales de acceso:",
+                pontis_username=pontis_username,
+                pontis_password=plain_password
+            )
         
         # ----------------------- Flujo de creación de factura -----------------------
         logger.info("Iniciando creación de factura en Odoo...")
@@ -1095,14 +1105,26 @@ async def handle_associated_user_flow(conn, id_contact: int, contact_info: dict)
     else:
         logger.info("Cliente actualizado en Pontis correctamente.")
     
-    # 14. Enviar por correo las credenciales de acceso a Pontis
-    send_pontis_credentials_email(
-        to_email=contact_info.get("email"),
-        subject="Tus credenciales de acceso a M+",
-        pontis_username=pontis_customer_id,  # Ajustar: aquí se usa el ID de cliente para Pontis.
-        pontis_password=existing_password
-    )
-    logger.info("Correo de credenciales enviado a: %s", contact_info.get("email"))
+
+    if id_plan in [46, 47, 48, 49]:
+         # 14. Enviar por correo las credenciales de acceso a Pontis
+        send_pontis_credentials_email_v2(
+            to_email=contact_info.get("email"),
+            subject="Tus credenciales de acceso a M+",
+            pontis_username=pontis_customer_id,  # Ajustar: aquí se usa el ID de cliente para Pontis.
+            pontis_password=existing_password
+        )
+        logger.info("Correo de credenciales enviado a: %s", contact_info.get("email"))
+
+    else:
+        # 14. Enviar por correo las credenciales de acceso a Pontis
+        send_pontis_credentials_email(
+            to_email=contact_info.get("email"),
+            subject="Tus credenciales de acceso a M+",
+            pontis_username=pontis_customer_id,  # Ajustar: aquí se usa el ID de cliente para Pontis.
+            pontis_password=existing_password
+        )
+        logger.info("Correo de credenciales enviado a: %s", contact_info.get("email"))
     
     return {
         "detail": "Contacto actualizado en Pontis correctamente.",
@@ -1212,16 +1234,22 @@ async def handle_non_associated_user_flow(conn, id_contact: int, contact_info: d
     logger.info("Respuesta de activación en Pontis: %s", activation_response)
 
 
-
-
-    
-    send_pontis_credentials_email(
-        to_email=contact_info.get("email"),
-        subject="Tus credenciales de acceso a M+",
-        pontis_username=user_name_pontis,  
-        pontis_password=new_password
-    )
-    logger.info("Correo de credenciales enviado a: %s", contact_info.get("email"))
+    if id_plan in [46, 47, 48, 49]:
+        send_pontis_credentials_email_v2(
+            to_email=contact_info.get("email"),
+            subject="Tus credenciales de acceso a M+",
+            pontis_username=user_name_pontis,  
+            pontis_password=new_password
+        )
+        logger.info("Correo de credenciales enviado a: %s", contact_info.get("email"))
+    else:
+        send_pontis_credentials_email(
+            to_email=contact_info.get("email"),
+            subject="Tus credenciales de acceso a M+",
+            pontis_username=user_name_pontis,  
+            pontis_password=new_password
+        )
+        logger.info("Correo de credenciales enviado a: %s", contact_info.get("email"))
     
     return {
         "detail": "Contacto activado como usuario portal en Pontis correctamente.",
