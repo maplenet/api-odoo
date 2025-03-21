@@ -564,10 +564,6 @@ async def update_user(request: Request):
         else:
             id_plan2 = 0
 
-
-
-        
-
        
         # Verificar que el plan sea válido
         product_data = execute_odoo_method(conn, 'product.product', 'read', [[id_plan]])
@@ -625,12 +621,14 @@ async def update_user(request: Request):
                 await delete_packages_in_pontis(pontis_customer_id)
                 logger.info("Paquetes eliminados en Pontis para MAP0%s. Actualizando plan...", id_user)
 
+
+                logger.info("Planes para el crear el payload de actualización en Pontis: id_plan=%s, id_plan2=%s", id_user, id_plan2)    
                 # Armamos la data de actualización con base al id_plan
                 update_data_customer = await build_update_customer_data(id_plan, id_plan2)
                 logger.debug("Payload de actualización para Pontis: %s", update_data_customer)
 
-                # update_response = await update_customer_in_pontis(update_data_customer, pontis_customer_id)
-                # logger.info("Plan actualizado en Pontis para MAP0%s. Respuesta: %s", id_user, update_response)
+                update_response = await update_customer_in_pontis(update_data_customer, pontis_customer_id)
+                logger.info("Plan actualizado en Pontis para MAP0%s. Respuesta: %s", id_user, update_response)
 
                 # OJO: Como ya existe el usuario en Pontis y se actualizó, 
                 #      no se hará create_customer_in_pontis() más adelante.
@@ -674,13 +672,13 @@ async def update_user(request: Request):
             customer_data = build_customer_data(id_user, updated_contact, id_plan, id_plan2, plain_password)
             logger.debug("Payload para create_customer_in_pontis: %s", customer_data)
 
-            # create_customer_response = await create_customer_in_pontis(customer_data) # TODO: DESCOMENTAR
-            # if not create_customer_response.get("response"):
-            #     logger.error("No se obtuvieron credenciales de Pontis tras create_customer_in_pontis.")
-            #     raise HTTPException(status_code=500, detail="No se obtuvieron credenciales de Pontis.")
-            # pontis_username = create_customer_response["response"]
-            # logger.info("Credenciales en Pontis creadas/obtenidas: %s", pontis_username)
-            pontis_username = f"MAP0{id_user}" # TODO: Borrar
+            create_customer_response = await create_customer_in_pontis(customer_data) # TODO: DESCOMENTAR
+            if not create_customer_response.get("response"):
+                logger.error("No se obtuvieron credenciales de Pontis tras create_customer_in_pontis.")
+                raise HTTPException(status_code=500, detail="No se obtuvieron credenciales de Pontis.")
+            pontis_username = create_customer_response["response"]
+            logger.info("Credenciales en Pontis creadas/obtenidas: %s", pontis_username)
+            # pontis_username = f"MAP0{id_user}" # TODO: Borrar
         else:
             # => Caso: ya existía => ya hicimos update si plan estaba expirado
             # Reusamos su ID de Pontis

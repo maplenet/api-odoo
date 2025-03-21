@@ -38,12 +38,10 @@ def _compute_dates_for_plan(plan_id: int) -> tuple[str, str]:
     """
     if plan_id == 46:
         return ("20/03/2025", "20/03/2025")
-    elif plan_id == 11: #TODO: CAMBIAR------------
+    elif plan_id == 47: #TODO: CAMBIAR------------
         return ("21/03/2025", "21/03/2025")
-    elif plan_id == 14: #TODO: CAMBIAR------------
-        return ("25/03/2025", "25/03/2025")
     elif plan_id == 49:
-        return ("25/03/2025", "25/03/2025")
+        return ("25/03/2025", "26/03/2025")
     else:
         now = datetime.now()
         return (
@@ -85,7 +83,7 @@ def _build_services_for_plan_create(plan_id: int, eff: str, exp: str) -> list:
             {"effectiveDt": eff, "expireDt": exp, "serviceMenu": {"serviceMenuId": "6294"}}
         ])
     # Plan 46..49
-    elif plan_id in [46, 47, 48, 49]:
+    elif plan_id in [46, 47, 49]:
         services.extend([
             {"effectiveDt": eff, "expireDt": exp, "serviceMenu": {"serviceMenuId": "6294"}}
         ])
@@ -104,7 +102,7 @@ def _determine_auto_prov_counts(plan_id: int) -> tuple[str, str]:
         return ("1", "2")
     elif plan_id in [8, 9]:
         return ("2", "3")
-    elif plan_id in [46, 47, 48, 49]:
+    elif plan_id in [46, 47, 49]:
         return ("1", "2")
     else:
         # Por defecto
@@ -273,6 +271,7 @@ async def update_customer_password_in_pontis(customer_id: str, new_password: str
 
 async def delete_packages_in_pontis(pontis_customer_id):
     url = f"{settings.OTT_URL_BASE_API}/customers/deleteServices/{pontis_customer_id}" 
+    # url = f"{settings.OTT_URL_BASE_API}/customers/deleteServices/MAP006" 
     headers = {"Content-Type": "application/json"}
     try:
         async with httpx.AsyncClient() as client:
@@ -322,7 +321,7 @@ def _build_services_for_plan(plan_id: int, effective_dt: str, expire_dt: str) ->
             {"effectiveDt": effective_dt, "expireDt": expire_dt, "serviceMenu": {"serviceMenuId": "6217"}},
             {"effectiveDt": effective_dt, "expireDt": expire_dt, "serviceMenu": {"serviceMenuId": "6294"}}
         ]
-    elif plan_id == 14:
+    elif plan_id == 9:
         autoProvCountStationary = "2"
         autoProvisionCountMobile = "3"
         services = [
@@ -331,7 +330,7 @@ def _build_services_for_plan(plan_id: int, effective_dt: str, expire_dt: str) ->
             {"effectiveDt": effective_dt, "expireDt": expire_dt, "serviceMenu": {"serviceMenuId": "6293"}},
             {"effectiveDt": effective_dt, "expireDt": expire_dt, "serviceMenu": {"serviceMenuId": "6294"}}
         ]
-    elif plan_id in [46, 47, 48, 49]:
+    elif plan_id in [46, 47, 49]:
         # Ejemplo de tu caso especial
         autoProvCountStationary = "1"
         autoProvisionCountMobile = "2"
@@ -394,6 +393,8 @@ async def build_update_customer_data(id_plan: int, id_plan2: int = 0) -> dict:
 async def update_customer_in_pontis(update_data_customer, pontis_customer_id):
 
     url = f"{settings.OTT_URL_BASE_API}/customers/{pontis_customer_id}" 
+    # url = f"{settings.OTT_URL_BASE_API}/customers/MAP006" 
+
 
     headers = {"Content-Type": "application/json"}
     
@@ -419,8 +420,8 @@ async def check_customer_in_pontis(pontis_customer_id: str) -> dict:
     Llama al endpoint GET /getCustomer/<pontis_customer_id> en la API de Pontis.
     Retorna el JSON completo si existe, o un dict con "response": None si no existe.
     """
-    # url = f"{settings.OTT_URL_BASE_API}/customers/getCustomer/{pontis_customer_id}"
-    url = f"{settings.OTT_URL_BASE_API}/customers/getCustomer/MAP006"   #TODO: CAMBIAR------------
+    url = f"{settings.OTT_URL_BASE_API}/customers/getCustomer/{pontis_customer_id}"
+    # url = f"{settings.OTT_URL_BASE_API}/customers/getCustomer/MAP006"   #TODO: CAMBIAR------------
 
     
     logger.debug("Consultando API Pontis en URL: %s", url)
