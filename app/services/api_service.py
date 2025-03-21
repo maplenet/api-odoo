@@ -42,16 +42,17 @@ def build_customer_data(id_user, contact_data, id_plan, password):
     if id_plan == 46:
         effective_dt = "20/03/2025"
         expire_dt = "20/03/2025"
-    if id_plan == 47:
+    elif id_plan == 47:
         effective_dt = "21/03/2025"
         expire_dt = "21/03/2025"
-    if id_plan == 48:
+    elif id_plan == 48:
         effective_dt = "25/03/2025"
         expire_dt = "25/03/2025"
-    if id_plan == 49:  
+    elif id_plan == 49:  
         effective_dt = "25/03/2025"
         expire_dt = "25/03/2025"
     else:
+
         # Fechas
         effective_dt = datetime.now().strftime("%d/%m/%Y")
         expire_dt = (datetime.now() + timedelta(days=30)).strftime("%d/%m/%Y")
