@@ -4,6 +4,9 @@ from fastapi import HTTPException
 from datetime import datetime, timedelta
 from app.config import settings
 from app.core.logging_config import logger
+import zoneinfo
+
+tz_bolivia = zoneinfo.ZoneInfo("America/La_Paz")
 
 async def login_to_external_api():
     """
@@ -42,19 +45,22 @@ def build_customer_data(id_user, contact_data, id_plan, password):
     if id_plan == 46:
         effective_dt = "20/03/2025"
         expire_dt = "20/03/2025"
-    if id_plan == 47:
+    elif id_plan == 47:
         effective_dt = "21/03/2025"
         expire_dt = "21/03/2025"
-    if id_plan == 48:
-        effective_dt = "25/03/2025"
-        expire_dt = "25/03/2025"
-    if id_plan == 49:  
+    elif id_plan == 49:  
         effective_dt = "25/03/2025"
         expire_dt = "25/03/2025"
     else:
-        # Fechas
-        effective_dt = datetime.now().strftime("%d/%m/%Y")
-        expire_dt = (datetime.now() + timedelta(days=30)).strftime("%d/%m/%Y")
+        now_bolivia = datetime.now(tz_bolivia)
+        plus_30 = now_bolivia + timedelta(days=30)
+
+        # Ejemplo de formateo
+        effective_dt = now_bolivia.strftime("%d/%m/%Y")
+        expire_dt = plus_30.strftime("%d/%m/%Y")
+
+        # effective_dt = datetime.now().strftime("%d/%m/%Y")
+        # expire_dt = (datetime.now() + timedelta(days=30)).strftime("%d/%m/%Y")
 
     # Construcción dinámica de la lista de servicios
     subscribe_service_list = []
@@ -151,14 +157,6 @@ def build_customer_data(id_user, contact_data, id_plan, password):
                 "serviceMenu": {"serviceMenuId": "6294"} 
             }
         ])
-    if id_plan == 48:
-        subscribe_service_list.extend([
-            {
-                "effectiveDt": effective_dt,
-                "expireDt": expire_dt,
-                "serviceMenu": {"serviceMenuId": "6294"} 
-            }
-        ])
     if id_plan == 49:
         subscribe_service_list.extend([
             {
@@ -174,7 +172,7 @@ def build_customer_data(id_user, contact_data, id_plan, password):
     elif id_plan in [8, 9]:
         autoProvCountStationary = "2"
         autoProvisionCountMobile = "3"
-    elif id_plan in [46, 47, 48, 49]:
+    elif id_plan in [46, 47, 49]:
         autoProvCountStationary = "1"
         autoProvisionCountMobile = "2"
     else:
@@ -314,7 +312,7 @@ async def delete_packages_in_pontis(pontis_customer_id):
 async def build_update_customer_data(id_plan):
 
 
-    if id_plan in [46, 47, 48, 49]:
+    if id_plan in [46, 47, 49]:
         # Si el id_plan es 46, effective_dt y  expire_dt seran ambos el 20/03/2025 
         if id_plan == 46:
             effective_dt = "20/03/2025"
@@ -323,10 +321,6 @@ async def build_update_customer_data(id_plan):
         if id_plan == 47:
             effective_dt = "21/03/2025"
             expire_dt = "21/03/2025"
-        # Si el id_plan es 48, effective_dt y  expire_dt seran ambos el 21/03/2025
-        if id_plan == 48:
-            effective_dt = "25/03/2025"
-            expire_dt = "25/03/2025"
         # Si el id_plan es 49, effective_dt y  expire_dt seran ambos el 25/03/2025
         if id_plan == 49:
             effective_dt = "25/03/2025"
@@ -361,7 +355,7 @@ async def build_update_customer_data(id_plan):
             {"effectiveDt": effective_dt, "expireDt": expire_dt, "serviceMenu": {"serviceMenuId": "6293"}},
             {"effectiveDt": effective_dt, "expireDt": expire_dt, "serviceMenu": {"serviceMenuId": "6294"}}
         ]
-    elif id_plan in [46, 47, 48, 49]:
+    elif id_plan in [46, 47, 49]:
         autoProvCountStationary = "1"
         autoProvisionCountMobile = "2"
         services = [
