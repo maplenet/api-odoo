@@ -14,13 +14,7 @@ class Settings(BaseSettings):
 	JWT_EXPIRATION_MINUTES: int
 
 	# Configuración para correo electrónico
-	EMAIL_USERNAME: str = Field(..., env="EMAIL_USERNAME")
-	EMAIL_PASSWORD: str = Field(..., env="EMAIL_PASSWORD")
 	EMAIL_FROM: str = Field(..., env="EMAIL_FROM")
-	EMAIL_PORT: int = Field(..., env="EMAIL_PORT")
-	EMAIL_SERVER: str = Field(..., env="EMAIL_SERVER")
-	EMAIL_TLS: bool = Field(..., env="EMAIL_TLS")
-	EMAIL_SSL: bool = Field(..., env="EMAIL_SSL")
     
 	# variable de encriptación
 	ENCRYPTION_KEY: str = Field(..., env="ENCRYPTION_KEY")

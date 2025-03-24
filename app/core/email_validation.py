@@ -1,5 +1,7 @@
 import re
 from fastapi import HTTPException
+from app.core.logging_config import logger
+
 
 # Expresión regular para validar el formato de un correo electrónico
 EMAIL_REGEX = re.compile(r'^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,4}$', re.IGNORECASE)
@@ -60,19 +62,14 @@ BLACKLISTED_DOMAINS = {
 }
 
 def is_valid_email(email: str) -> bool:
-    """
-    Valida que el correo tenga un formato correcto y que el dominio no esté en la lista negra.
-    
-    :param email: Dirección de correo a validar.
-    :raises HTTPException: Si el formato es inválido o el dominio está prohibido.
-    :return: True si el correo es válido.
-    """
     if not EMAIL_REGEX.match(email):
+        logger.error("Formato de email inválido: %s", email)
         raise HTTPException(status_code=400, detail="Invalid email format.")
     
-    # Se extrae el dominio y se convierte a minúsculas para la comparación
     domain = email.split("@")[-1].lower()
     if domain in BLACKLISTED_DOMAINS:
+        logger.error("Dominio no permitido en email: %s", domain)
         raise HTTPException(status_code=400, detail="The email domain is not allowed.")
     
+    logger.debug("El email %s es válido", email)
     return True

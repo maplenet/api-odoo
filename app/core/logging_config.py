@@ -1,5 +1,4 @@
 import logging
-import os
 from app.config import settings
 
 # Usa el nivel definido en la configuración o en la variable de entorno
@@ -16,3 +15,6 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 logger.debug("Logging configurado en nivel DEBUG")
+
+
+logging.getLogger("python_http_client.client").setLevel(logging.WARNING)
