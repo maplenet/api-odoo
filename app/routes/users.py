@@ -221,14 +221,6 @@ async def get_user_with_service(
     user_id: int, 
     token_payload: dict = Depends(verify_token)
 ):
-    """
-    Obtiene la información del usuario (SQLite) y su servicio. Para el servicio:
-      - Se verifica si el usuario existe en Pontis:
-         * Si NO existe (response = None), no hay plan => se retorna service vacío.
-         * Si existe, se revisa si su plan está activo con `check_subscribe_services_expiration`.
-             - Si plan activo => devolvemos la última factura de Odoo que tenga un producto permitido.
-             - Si plan expirado => devolvemos un objeto 'service' con status=False y mensaje de caducidad.
-    """
     logger.info("Iniciando get_user_with_service para user_id=%s", user_id)
 
     # 1) Verificar que user_id en token coincida
@@ -435,12 +427,6 @@ def _get_last_invoice_with_valid_product(odoo_conn, partner_id: int):
 
 
 #=============================================================================================================================
-
-
-
-
-
-
 
 
 @router.patch("/update_user")
@@ -944,8 +930,6 @@ def split_name(full_name: str) -> tuple:
     if len(parts) == 1:
         return (parts[0], "")
     return (parts[0], " ".join(parts[1:]))
-
- # DE ACA PARA ABJO ES NUEVO------------------------------------------------------------------------------------------   
 
 def get_valid_invoices_for_search(conn, id_contact: int, allowed_plan_ids: list) -> list:
     """
