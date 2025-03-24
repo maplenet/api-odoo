@@ -5,13 +5,14 @@ from datetime import datetime, timedelta
 from app.core.security import settings 
 from app.core.email_utils import send_reset_password_email
 from app.core.email_validation import is_valid_email
-from app.core.security import create_access_token, create_password_reset_token, verify_token, oauth2_scheme, blacklisted_tokens
+from app.core.security import create_access_token, create_password_reset_token, verify_token, oauth2_scheme
 from app.core.database import get_odoo_connection
 from app.routes.users import _is_valid_password
 from app.services.api_service import update_customer_password_in_pontis
 from app.services.sqlite_service import update_user_password
 from app.services.token_service import get_token_record, mark_token_as_used, revoke_token, store_token
 from app.services.verification_service import handle_verification_request, verify_code_and_email
+from app.core.logging_config import logger
 
 router = APIRouter(tags=["authentication"])
 
@@ -202,50 +203,72 @@ def logout(id_user: int, response: Response, token: str = Depends(oauth2_scheme)
 
 @router.post("/verify-email")
 async def verify_email(request: Request):
+    logger.info("Inicio del endpoint verify-email")
     body = await request.json()  # Extraer el cuerpo de la solicitud como JSON
     email = body.get("email")   # Obtener el campo "email" del JSON
 
+    logger.debug("Email recibido: %s", email)
+    
     # Verificar si el campo "email" está presente
     if not email:
+        logger.error("El campo 'email' es obligatorio.")
         raise HTTPException(status_code=400, detail="El campo 'email' es obligatorio.")
 
     # Validar el formato del correo
-    if not is_valid_email(email):
-        raise HTTPException(status_code=400, detail="Correo inválido.")
-    
-    # Verificar que el correo sea unico en los contactos de odoo, es decir que no exista
-    conn = get_odoo_connection()
-    contacts = conn['models'].execute_kw(
-        conn['db'], conn['uid'], conn['password'],
-        'res.partner', 'search_read', [[['email', '=', email]]]
-    )   
-    if contacts:
-        raise HTTPException(status_code=400, detail="El correo ya está registrado.")
+    try:
+        is_valid_email(email)
+    except HTTPException as ve:
+        logger.error("Correo inválido: %s", email)
+        raise ve
+
+    # Verificar que el correo sea único en los contactos de Odoo
+    try:
+        conn = get_odoo_connection()
+        contacts = conn['models'].execute_kw(
+            conn['db'], conn['uid'], conn['password'],
+            'res.partner', 'search_read', [[['email', '=', email]]]
+        )
+        if contacts:
+            logger.warning("El correo ya está registrado en Odoo: %s", email)
+            raise HTTPException(status_code=400, detail="El correo ya está registrado.")
+    except Exception as e:
+        logger.exception("Error consultando Odoo para el email: %s", email)
+        raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
     
     # Manejar la lógica de verificación
     try:
+        logger.info("Llamando a handle_verification_request para el email: %s", email)
         result = handle_verification_request(email)
         if "error" in result:
+            logger.warning("Error en handle_verification_request para email %s: %s", email, result["error"])
             raise HTTPException(status_code=400, detail=result["error"])
+        logger.info("Verificación exitosa para email: %s", email)
         return result
     except Exception as e:
+        logger.exception("Error interno en verify-email para el email: %s", email)
         raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
 
 @router.post("/verify-code")
 async def verify_code(request: Request):
+    logger.info("Inicio de verificación de código de correo")
     body = await request.json()
     email = body.get("email")
     code = body.get("code")
 
+    logger.debug("Datos recibidos - email: %s, code: %s", email, code)
+
     # Verificar si ambos campos están presentes
     if not email or not code:
+        logger.error("Faltan campos obligatorios: email o code")
         raise HTTPException(status_code=400, detail="Los campos 'email' y 'code' son obligatorios.")
 
     # Lógica de verificación
     result = verify_code_and_email(email, code)
     if "error" in result:
+        logger.warning("Error en verificación para email %s: %s", email, result["error"])
         raise HTTPException(status_code=400, detail=result["error"])
 
+    logger.info("Verificación exitosa para email %s", email)
     return result
 
 @router.post("/forgot_password")

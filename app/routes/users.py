@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 from app.services.api_service import build_customer_data, build_update_customer_data, check_customer_in_pontis, check_subscribe_services_expiration, create_customer_in_pontis, delete_packages_in_pontis, login_to_external_api, update_customer_in_pontis, update_customer_password_in_pontis
 from app.services.odoo_service import execute_odoo_method
 from app.services.sqlite_service import get_decrypted_password, get_user_record, insert_user_record, update_user_password
-from app.services.sqlite_service import update_user_policies  # Asegúrate de importar la función
+from app.services.sqlite_service import update_user_policies  
 from app.utils.plans import PRODUCTS
 from app.core.logging_config import logger
 
@@ -27,97 +27,123 @@ def _is_valid_password(password: str) -> bool:
 @router.post("/create")
 async def create_user(request: Request):
     sqlite_conn = None  # Declaramos la variable por adelantado
+    logger.info("Inicio del proceso para crear un nuevo usuario")
     try:
         body = await request.json()
+        logger.debug("Body recibido: %s", body)
+        
         first_name = body.get("first_name")
         last_name = body.get("last_name")
         email = body.get("email")
         mobile = body.get("mobile")
         password = body.get("password")
         password2 = body.get("verify_password")
-
-        # Validaciones básicas...
+        
+        # Validaciones básicas
         if not first_name:
+            logger.error("Falta el campo 'first_name'")
             raise HTTPException(status_code=400, detail="The 'first_name' field is required.")
         if not last_name:
+            logger.error("Falta el campo 'last_name'")
             raise HTTPException(status_code=400, detail="The 'last_name' field is required.")
         if not email:
+            logger.error("Falta el campo 'email'")
             raise HTTPException(status_code=400, detail="The 'email' field is required.")
         if not mobile:
+            logger.error("Falta el campo 'mobile'")
             raise HTTPException(status_code=400, detail="The 'mobile' field is required.")
         if not password:
+            logger.error("Falta el campo 'password'")
             raise HTTPException(status_code=400, detail="The 'password' field is required.")
         if not password2:
+            logger.error("Falta el campo 'verify_password'")
             raise HTTPException(status_code=400, detail="The 'verify_password' field is required.")
 
         if first_name.strip() == "" or last_name.strip() == "" or email.strip() == "" or mobile.strip() == "":
+            logger.error("Algún campo obligatorio está vacío")
             raise HTTPException(status_code=400, detail="The fields cannot be empty.")
 
         if password != password2:
+            logger.error("Las contraseñas no coinciden para el email: %s", email)
             raise HTTPException(status_code=400, detail="The passwords do not match.")
 
         if not _is_valid_password(password):
+            logger.error("El password no cumple con los criterios para el email: %s", email)
             raise HTTPException(
                 status_code=400, 
                 detail="The password must have at least 8 characters and max 40 characteres, including 1 uppercase, 1 lowercase and 1 number."
             )
         
-        is_valid_email(email)  # Lanza una excepción si el correo no es válido
+        # Validar formato del correo
+        is_valid_email(email)
+        logger.debug("El email %s es válido", email)
 
+        # Conexión a SQLite para verificar el registro de verificación
         sqlite_conn = get_sqlite_connection()
         cursor = sqlite_conn.cursor()
-
-        # Verificar el correo en la tabla de verification
         cursor.execute("SELECT * FROM verification WHERE email = ? ORDER BY id DESC LIMIT 1", (email,))
         verification_record = cursor.fetchone()
-
         if not verification_record:
+            logger.error("No se encontró registro de verificación para el email: %s", email)
             raise HTTPException(status_code=400, detail="The email has not been registered for verification.")
-
         status = verification_record[2]
         if status == 0:
+            logger.warning("El email %s no ha sido verificado", email)
             raise HTTPException(status_code=400, detail="The email has not been verified.")
+        logger.info("Registro de verificación OK para %s", email)
 
+        # Conexión a Odoo para validar si el usuario ya existe
         odoo_conn = get_odoo_connection()
-
         existing_user = execute_odoo_method(odoo_conn, 'res.users', 'search_count', [[('login', '=', email)]])
         if existing_user:
+            logger.warning("El email %s ya está registrado en Odoo", email)
             raise HTTPException(status_code=400, detail="The email is already registered in the system.")
 
+        # Obtener el grupo portal desde Odoo
         group_portal = execute_odoo_method(
             odoo_conn, 'ir.model.data', 'search_read',
             [[('model', '=', 'res.groups'), ('module', '=', 'base'), ('name', '=', 'group_portal')]],
             {'fields': ['res_id'], 'limit': 1}
         )
         if not group_portal:
+            logger.error("No se encontró el grupo Portal en Odoo")
             raise HTTPException(status_code=500, detail="The Portal group was not found in Odoo.")
         group_portal_id = group_portal[0]['res_id']
+        logger.debug("Grupo Portal obtenido: %s", group_portal_id)
 
+        # Crear el usuario en Odoo
+        user_data = {
+            'login': email,
+            'name': first_name + " " + last_name,
+            'email': email,
+            'mobile': mobile,
+            'password': password,
+            'lang': 'es_MX',
+            'groups_id': [(6, 0, [group_portal_id])]
+        }
+        logger.info("Creando usuario en Odoo para el email: %s", email)
         user_id = execute_odoo_method(
-            odoo_conn, 'res.users', 'create', [{
-                'login': email,
-                'name': first_name + " " + last_name,
-                'email': email,
-                'mobile': mobile,
-                'password': password,
-                'lang': 'es_MX',
-                'groups_id': [(6, 0, [group_portal_id])]
-            }],
+            odoo_conn, 'res.users', 'create', [user_data],
             kwargs={'context': {'no_reset_password': True}}
         )
+        logger.info("Usuario creado en Odoo con ID: %s para el email: %s", user_id, email)
 
-        # Insertar el registro del usuario en SQLite (la contraseña se encripta automáticamente)
+        # Insertar el registro del usuario en SQLite
         insert_user_record(user_id, first_name, last_name, email, mobile, password)
+        logger.info("Registro de usuario insertado en SQLite para el email: %s", email)
 
         return {"detail": "Successful process", "id": user_id}
 
     except HTTPException as http_error:
+        logger.error("Error HTTP en create_user: %s", http_error.detail)
         raise http_error
     except Exception as e:
+        logger.exception("Error interno en create_user para el email: %s", email)
         raise HTTPException(status_code=500, detail=f"Internal error:: {str(e)}")
     finally:
         if sqlite_conn is not None:  # Solo cerrar si se asignó
             sqlite_conn.close()
+            logger.debug("Conexión SQLite cerrada")
 
 @router.patch("/change_password")
 async def change_password(request: Request, token_payload: dict = Depends(verify_token)):
