@@ -1136,12 +1136,21 @@ async def handle_associated_user_flow(conn, id_contact: int, contact_info: dict)
     
     await login_to_external_api()
     logger.info("Conexión exitosa a la API externa.")
-       
-    res = await delete_packages_in_pontis(pontis_customer_id)
 
-    if res:
-        logger.info("Paquetes eliminados en Pontis: %s", pontis_customer_id)
-
+    # TODO: HACER MÁS VALIDACIONES O REFACTORIZAR
+    pontis_data = await check_customer_in_pontis(pontis_customer_id)
+    if pontis_data.get("response") is None:
+        logger.warning("El usuario MAP0%s NO existe en Pontis. Se omite 'delete_packages_in_pontis'.", id_user)
+        # Mostrar mensaje de error si no hay respuesta
+        raise HTTPException(status_code=500, detail="No existe registro en Pontis.")
+    else:
+        # Ya existe => ahora sí eliminar
+        res = await delete_packages_in_pontis(pontis_customer_id)
+        logger.info("Respuesta de paquetes eliminados en Pontis para MAP0%s: %s", id_user, res)
+        if res.get("response") is not None:
+            logger.info("Paquetes eliminados en Pontis: %s", pontis_customer_id)
+        else:
+            logger.warning("No se eliminaron paquetes en Pontis porque no habia nada que eliminar para MAP0%s.", id_user)
 
     update_data_customer = await build_update_customer_data(id_plan)
     logger.debug("Datos para actualizar en Pontis: %s", update_data_customer)
