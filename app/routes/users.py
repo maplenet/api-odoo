@@ -21,7 +21,7 @@ router = APIRouter(prefix="/users", tags=["users"])
 def _is_valid_password(password: str) -> bool:
     # El password debe ser alfanumérico, tener entre 8 y 40 caracteres, 
     # al menos 1 mayúscula, 1 minúscula y 1 número. 
-    pattern = r"^(?=.*[A-Z])(?=.*[a-z])(?=.*\d)[A-Za-z\d]{8,40}$"
+    pattern = r"^(?=.*[A-Z])(?=.*[a-z])(?=.*\d)[A-Za-z\d@#$%^&+=!._-]{8,40}$"
     return bool(re.match(pattern, password))
 
 
