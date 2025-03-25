@@ -1,13 +1,14 @@
 import random
 import string
-from fastapi import APIRouter, HTTPException, Depends, Request, Query
+from app.config import settings
+from fastapi import APIRouter, HTTPException, Depends, Request
 import re
 from app.core.email_validation import is_valid_email
 from app.core.security import verify_token
 from app.core.database import get_odoo_connection, get_sqlite_connection
 from app.core.email_utils import send_pontis_credentials_email, send_pontis_credentials_email_v2
 from datetime import datetime, timedelta, timezone
-from app.services.api_service import build_customer_data, build_update_customer_data, check_customer_in_pontis, check_subscribe_services_expiration, create_customer_in_pontis, delete_packages_in_pontis, login_to_external_api, update_customer_in_pontis, update_customer_password_in_pontis
+from app.services.api_service import build_customer_data, build_update_customer_data, check_customer_in_pontis, check_subscribe_services_expiration, create_customer_in_pontis, delete_packages_in_pontis, update_customer_in_pontis, update_customer_password_in_pontis
 from app.services.odoo_service import execute_odoo_method
 from app.services.sqlite_service import get_decrypted_password, get_user_record, insert_user_record, update_user_password
 from app.services.sqlite_service import update_user_policies  
@@ -200,7 +201,7 @@ async def change_password(request: Request, token_payload: dict = Depends(verify
 
         # --- NUEVO: Actualizar la contraseña en Pontis ----
         # Construir el customer_id para Pontis
-        pontis_customer_id = "MAP0" + str(user_id)
+        pontis_customer_id = f"{settings.PREFIX_MAPLENET}" + str(user_id)
         pontis_update = await update_customer_password_in_pontis(pontis_customer_id, new_password)
         # (Podrías validar la respuesta según lo necesites)
         
@@ -261,10 +262,6 @@ async def get_user_with_service(
         # 4) Revisar Pontis para saber si el plan está activo
         #    - "MAP0{user_id}" como ID de Pontis
         pontis_customer_id = f"MAP0{user_id}"
-
-        # 4.1) Autenticarse en Pontis
-        await login_to_external_api()
-        logger.debug("Autenticado en Pontis correctamente.")
 
         # 4.2) Consultar si existe en Pontis
         pontis_data = await check_customer_in_pontis(pontis_customer_id)
@@ -583,10 +580,6 @@ async def update_user(request: Request):
         # ----------------------------------------------------------------------------
         logger.info("Validando plan Pontis para usuario con ID=%s -> MAP0%s", id_user, id_user)
 
-        # 1) Logueo a Pontis
-        await login_to_external_api()
-        logger.debug("Autenticación en Pontis exitosa.")
-
         # pontis_customer_id = "MAP006"                                  # todo: cambiar
         pontis_customer_id = f"MAP0{id_user}"
         # 2) Verificar si el usuario existe en Pontis
@@ -643,9 +636,7 @@ async def update_user(request: Request):
         plain_password = get_decrypted_password(id_user)
         logger.debug("Contraseña desencriptada: %s", plain_password)
 
-        # Reconexión a Pontis si hiciera falta
-        logger.info("Reconectando a Pontis para crear/actualizar datos de servicio final.")
-        await login_to_external_api()
+
 
         updated_contact = execute_odoo_method(conn, 'res.partner', 'read', [[partner_id]])
         logger.debug("Contacto en Odoo tras actualización: %s", updated_contact[0]['id'])
@@ -857,7 +848,6 @@ async def search_contact(request: Request):
             pontis_id = f"MAP0{user_id}"
 
             # 5. Llamar a la API de Pontis para ver si el plan sigue activo
-            await login_to_external_api()  # (si requieres un login previo)
             pontis_data = await check_customer_in_pontis(pontis_id)
 
             # Si "response" es None, no hay plan => devolvemos contacto
@@ -901,10 +891,6 @@ async def search_contact(request: Request):
     except Exception as e:
         logger.exception("Error interno en search_contact:")
         raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
-
-
- # ------------------------------------------------------------------------------------------   
-
 
 def generate_random_password(length=8) -> str:
     """Genera una contraseña aleatoria alfanumérica de la longitud dada,
@@ -1092,11 +1078,9 @@ async def handle_associated_user_flow(conn, id_contact: int, contact_info: dict)
     logger.info("Plan ID obtenido para la factura: %s", id_plan)
     
     # Armar el ID para Pontis (concatenar 'MAP0' + id_user)
-    pontis_customer_id = "MAP0" + str(id_user)
+    pontis_customer_id = f"{settings.PREFIX_MAPLENET}" + str(id_user)
     logger.debug("ID de cliente para Pontis: %s", pontis_customer_id)
     
-    await login_to_external_api()
-    logger.info("Conexión exitosa a la API externa.")
        
     res = await delete_packages_in_pontis(pontis_customer_id)
 
@@ -1223,14 +1207,8 @@ async def handle_non_associated_user_flow(conn, id_contact: int, contact_info: d
     
     customer_data = build_customer_data(new_user_id, updated_contact, id_plan, new_password)
     logger.debug("Payload para Pontis: %s", customer_data)
-    
-    await login_to_external_api()
-    logger.info("Conexión exitosa a la API externa.")
 
-    user_name_pontis = "MAP0" + str(new_user_id)
-
-
-
+    user_name_pontis = f"{settings.PREFIX_MAPLENET}" + str(new_user_id)
 
     activation_response = await create_customer_in_pontis(customer_data)
     pontis_username = activation_response["response"]

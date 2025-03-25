@@ -1,4 +1,5 @@
 import aiosqlite
+from app.config import settings
 from fastapi import APIRouter, HTTPException, Request, Depends, Response
 from jose import jwt, JWTError
 from datetime import datetime, timedelta
@@ -326,11 +327,6 @@ async def forgot_password(request: Request):
 
 @router.post("/reset_password")
 async def reset_password(request: Request):
-    """
-    Recibe el token de restablecimiento y las nuevas contraseñas, valida el token,
-    actualiza la contraseña en Odoo, en la base de datos 'users' y en Pontis,
-    y marca el token como usado.
-    """
     try:
         body = await request.json()
         reset_token = body.get("token")
@@ -383,7 +379,7 @@ async def reset_password(request: Request):
         update_user_password(user_id, new_password)
 
         # Actualizar la contraseña en Pontis
-        pontis_customer_id = "MAP0" + str(user_id)
+        pontis_customer_id = f"{settings.PREFIX_MAPLENET}" + str(user_id)
         response_pontis  = await update_customer_password_in_pontis(pontis_customer_id, new_password)
 
         # Marcar el token de restablecimiento como usado

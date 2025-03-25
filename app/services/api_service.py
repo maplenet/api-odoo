@@ -1,4 +1,5 @@
 import httpx
+from app.config import settings
 from datetime import datetime, timedelta, timezone
 from fastapi import HTTPException
 from datetime import datetime, timedelta
@@ -7,40 +8,13 @@ from app.core.logging_config import logger
 import zoneinfo
 
 tz_bolivia = zoneinfo.ZoneInfo("America/La_Paz")
-
-async def login_to_external_api():
-    """
-    Realiza una solicitud HTTP POST a la API externa para autenticarse.
-    """
-    url = f"{settings.OTT_URL_BASE_API}/auth/login"
-    payload = {
-        "customer_id": f"{settings.OTT_USERNAME}",
-        "password": f"{settings.OTT_PASSWORD}"
-    }
-
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.post(url, json=payload)
-            response.raise_for_status()  # Lanza una excepción si la respuesta no es exitosa
-            return response.json()  # Devuelve la respuesta JSON
-    except httpx.HTTPStatusError as e:
-        raise HTTPException(
-            status_code=e.response.status_code,
-            detail=f"Error al autenticarse en la API externa de PONTIS: {e.response.text}"
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error interno al conectarse a la API externa de PONTIS: {str(e)}"
-        )
-   
+ 
 def build_customer_data(id_user, contact_data, id_plan, password):
 
     contact = contact_data[0]
 
     # Obtener los últimos 4 dígitos del móvil
     mobile = contact.get("mobile", "")
-    pin = mobile[-4:] if mobile and len(mobile) >= 4 else "1234"
 
     if id_plan == 46:
         effective_dt = "20/03/2025"
@@ -184,7 +158,7 @@ def build_customer_data(id_user, contact_data, id_plan, password):
             "autoProvCountStationary": autoProvCountStationary,
             "autoProvisionCount": "0",
             "autoProvisionCountMobile": autoProvisionCountMobile,
-            "customerId": "MAP0"+str(id_user),
+            "customerId": f"{settings.PREFIX_MAPLENET}"+str(id_user),
             "favoritesEnabled": "Y",
             "firstName": contact.get("name", ""),
             "hasVod": "Y",
@@ -203,7 +177,7 @@ def build_customer_data(id_user, contact_data, id_plan, password):
             "secondaryAudioLanguage": "eng",
             "primarySubtitleLanguage": "spa",
             "secondarySubtitleLanguage": "eng",
-            "login": "MAP0"+str(id_user),
+            "login": f"{settings.PREFIX_MAPLENET}"+str(id_user),
             "password": password
         },
         "customerInfo": {
@@ -227,23 +201,15 @@ def build_customer_data(id_user, contact_data, id_plan, password):
 
 
 async def create_customer_in_pontis(customer_data):
-    """
-    Realiza una solicitud HTTP POST a la API de creación de clientes en Pontis.
-
-    :param api_token: Token de autenticación obtenido del login.
-    :param customer_data: Datos del cliente para crear.
-    :return: Respuesta de la API.
-    """
     url = f"{settings.OTT_URL_BASE_API}/customers/create"
     headers = {
         "Content-Type": "application/json"
     }
-
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(url, json=customer_data, headers=headers)
-            response.raise_for_status()  # Lanza una excepción si la respuesta no es exitosa
-            return response.json()  # Devuelve la respuesta JSON
+            response.raise_for_status()     # Lanza una excepción si la respuesta no es exitosa
+            return response.json()          # Devuelve la respuesta JSON
     except httpx.HTTPStatusError as e:
         raise HTTPException(
             status_code=e.response.status_code,
@@ -256,12 +222,6 @@ async def create_customer_in_pontis(customer_data):
         )
     
 async def update_customer_password_in_pontis(customer_id: str, new_password: str):
-    """
-    Realiza una solicitud HTTP PUT a la API de Pontis para actualizar la contraseña del cliente.
-    :param customer_id: ID del cliente en Pontis, por ejemplo "MAP0" + id
-    :param new_password: La nueva contraseña en texto plano.
-    :return: La respuesta JSON de la API de Pontis.
-    """
     url = f"{settings.OTT_URL_BASE_API}/customers/{customer_id}"
     payload = {
         "customerAccount": {

@@ -23,7 +23,7 @@ class Settings(BaseSettings):
 	OTT_USERNAME: str = Field(..., env="OTT_USERNAME")
 	OTT_PASSWORD: str = Field(..., env="OTT_PASSWORD")
 	SENDGRID_API_KEY: str = Field(..., env="SENDGRID_API_KEY")
-	URL_BASE_API_PONTIS: str = Field(..., env="URL_BASE_API_PONTIS")
+	PREFIX_MAPLENET: str = Field(..., env="PREFIX_MAPLENET")
 
 	class Config:
 		env_file = ".env"
