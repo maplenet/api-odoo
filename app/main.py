@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routes import auth, contacts, groups, invoices, system, users
+from app.routes import auth, contacts, email, groups, invoices, system, users
 
 app = FastAPI()
 
@@ -30,3 +30,4 @@ app.include_router(system.router)
 app.include_router(users.router)
 app.include_router(groups.router)
 app.include_router(invoices.router)
+app.include_router(email.router)

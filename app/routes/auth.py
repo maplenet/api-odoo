@@ -1,4 +1,5 @@
 import aiosqlite
+from app.core.logging_config import logger
 from fastapi import APIRouter, HTTPException, Request, Depends, Response
 from jose import jwt, JWTError
 from datetime import datetime, timedelta
@@ -308,71 +309,97 @@ async def reset_password(request: Request):
     actualiza la contraseña en Odoo, en la base de datos 'users' y en Pontis,
     y marca el token como usado.
     """
+    logger.info("Iniciando endpoint [reset_password]...")
     try:
         body = await request.json()
+        logger.debug("Body recibido: %s", body)
+
         reset_token = body.get("token")
         new_password = body.get("new_password")
         verify_password = body.get("verify_password")
 
         if not reset_token or not new_password or not verify_password:
+            logger.warning("Campos obligatorios faltantes en la petición: token=%s, new_password=%s, verify_password=%s",
+                           reset_token, bool(new_password), bool(verify_password))
             raise HTTPException(
                 status_code=400,
                 detail="Los campos 'token', 'new_password' y 'verify_password' son obligatorios."
             )
+
+        logger.debug("Validando que las contraseñas coincidan...")
         if new_password != verify_password:
+            logger.warning("Las contraseñas no coinciden.")
             raise HTTPException(status_code=400, detail="La nueva contraseña y su verificación no coinciden.")
+
+        logger.debug("Validando formato de la nueva contraseña...")
         if not _is_valid_password(new_password):
+            logger.warning("La nueva contraseña no cumple con el formato requerido.")
             raise HTTPException(
                 status_code=400,
-                detail="The password must have at least 8 characters and max 40 characteres, including 1 uppercase, 1 lowercase and 1 number."
+                detail="The password must have at least 8 characters and max 40 characteres, "
+                       "including 1 uppercase, 1 lowercase and 1 number."
             )
 
-        # Decodificar y verificar el token
+        logger.debug("Decodificando y verificando el token...")
         try:
             payload = jwt.decode(reset_token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
         except JWTError:
+            logger.error("Token inválido o expirado al decodificar.")
             raise HTTPException(status_code=401, detail="Token inválido o expirado.")
+
         if payload.get("action") != "reset_password":
+            logger.warning("El token no está autorizado para restablecer contraseña. action=%s", payload.get("action"))
             raise HTTPException(status_code=401, detail="Token no autorizado para restablecer contraseña.")
+
         user_id = payload.get("user_id")
         if not user_id:
+            logger.warning("El token no contiene 'user_id'.")
             raise HTTPException(status_code=401, detail="Token inválido: falta 'user_id'.")
 
-        # Verificar que el token no haya sido usado o revocado
+        logger.debug("Verificando estado del token en la base de datos...")
         token_record = get_token_record(reset_token)
         if token_record is None:
+            logger.warning("Token no encontrado en la base de datos.")
             raise HTTPException(status_code=401, detail="Token no encontrado.")
         if token_record.get("used") == 1:
+            logger.warning("El token ya ha sido utilizado.")
             raise HTTPException(status_code=401, detail="El token ya ha sido utilizado.")
         if token_record.get("revoked_at") is not None:
+            logger.warning("El token ha sido revocado.")
             raise HTTPException(status_code=401, detail="El token ha sido revocado.")
 
-        # Actualizar la contraseña en Odoo
+        logger.info("Actualizando contraseña en Odoo para user_id=%s", user_id)
         odoo_conn = get_odoo_connection()
         update_success = odoo_conn['models'].execute_kw(
             odoo_conn['db'], odoo_conn['uid'], odoo_conn['password'],
             'res.users', 'write', [[user_id], {'password': new_password}]
         )
         if not update_success:
+            logger.error("Fallo al actualizar la contraseña en Odoo para user_id=%s", user_id)
             raise HTTPException(status_code=500, detail="No se pudo actualizar la contraseña en Odoo.")
 
-        # Actualizar la contraseña en SQLite
+        logger.debug("Actualizando contraseña en SQLite para user_id=%s", user_id)
         update_user_password(user_id, new_password)
 
-        # Actualizar la contraseña en Pontis
+        logger.debug("Actualizando contraseña en Pontis para MAP0%s", user_id)
         pontis_customer_id = "MAP0" + str(user_id)
-        response_pontis  = await update_customer_password_in_pontis(pontis_customer_id, new_password)
+        response_pontis = await update_customer_password_in_pontis(pontis_customer_id, new_password)
+        logger.debug("Respuesta de Pontis: %s", response_pontis)
 
-        # Marcar el token de restablecimiento como usado
+        logger.debug("Marcando el token como usado en la base de datos...")
         mark_token_as_used(reset_token)
 
+        logger.info("Contraseña restablecida exitosamente para user_id=%s", user_id)
         return {
             "detail": "Contraseña restablecida exitosamente.",
             "pontis_response": response_pontis
-            }
+        }
 
     except HTTPException as http_error:
+        logger.error("HTTPException en reset_password: %s", http_error.detail)
         raise http_error
     except Exception as e:
+        logger.exception("Error interno en reset_password:")
         raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
+
         
