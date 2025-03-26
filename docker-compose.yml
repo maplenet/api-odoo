@@ -1,0 +1,10 @@
+services:
+  api-odoo:
+    build: .
+    image: api-odoo
+    ports:
+      - "8000:8000"
+    volumes:
+      - /home/ubuntu/prod/db/verification.db:/app/verification.db
+      - /home/ubuntu/prod/.env:/app/.env
+    container_name: api-odoo
