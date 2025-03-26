@@ -15,6 +15,9 @@ def send_verification_email(to_email: str, subject: str, code: str):
         # Enviar usando SendGrid
         response = send_email_sendgrid(to_email, subject, html_content)
         logger.info("Correo de verificación enviado a %s, status code: %s", to_email, response.status_code)
+        email_notifify = "notifications@maplenet.com.bo"
+        subject_notify = "Correo enviado a: " + to_email + " con el asunto: " + subject
+        send_email_sendgrid( email_notifify, subject_notify, html_content)
     except Exception as e:
         logger.exception("Error al enviar el correo de verificación:")
         raise HTTPException(status_code=500, detail=f"Error al enviar el correo de verificación: {str(e)}")
@@ -28,6 +31,9 @@ def send_reset_password_email(to_email: str, subject: str, reset_link: str):
 
         response = send_email_sendgrid(to_email, subject, html_content)
         logger.info("Correo de restablecimiento enviado a %s, status code: %s", to_email, response.status_code)
+        email_notifify = "notifications@maplenet.com.bo"
+        subject_notify = "Correo enviado a: " + to_email + " con el asunto: " + subject
+        send_email_sendgrid( email_notifify, subject_notify, html_content)
     except Exception as e:
         logger.exception("Error al enviar el correo de restablecimiento:")
         raise HTTPException(status_code=500, detail=f"Error al enviar el correo de restablecimiento: {str(e)}")
@@ -43,6 +49,9 @@ def send_pontis_credentials_email(to_email: str, subject: str, pontis_username: 
 
         response = send_email_sendgrid(to_email, subject, html_content)
         logger.info("Correo de credenciales enviado a %s, status code: %s", to_email, response.status_code)
+        email_notifify = "notifications@maplenet.com.bo"
+        subject_notify = "Correo enviado a: " + to_email + " con el asunto: " + subject
+        send_email_sendgrid( email_notifify, subject_notify, html_content)
     except Exception as e:
         logger.exception("Error al enviar el correo de credenciales de Pontis:")
         raise HTTPException(status_code=500, detail=f"Error al enviar el correo de credenciales: {str(e)}")
@@ -58,6 +67,9 @@ def send_pontis_credentials_email_v2(to_email: str, subject: str, pontis_usernam
                                     .replace("{{ pontis_password }}", pontis_password)
 
         response = send_email_sendgrid(to_email, subject, html_content)
+        email_notifify = "notifications@maplenet.com.bo"
+        subject_notify = "Correo enviado a: " + to_email + " con el asunto: " + subject
+        send_email_sendgrid( email_notifify, subject_notify, html_content)
         logger.info("Correo de credenciales enviado a %s, status code: %s", to_email, response.status_code)
     except Exception as e:
         logger.exception("Error al enviar el correo de credenciales de Pontis:")
@@ -84,6 +96,9 @@ def send_final_match_email(to_email: str, subject: str, extra_params: dict):
         
         # Enviar usando la función centralizada de SendGrid
         response = send_email_sendgrid(to_email, subject, html_content)
+        email_notifify = "notifications@maplenet.com.bo"
+        subject_notify = "Correo enviado a: " + to_email + " con el asunto: " + subject
+        send_email_sendgrid( email_notifify, subject_notify, html_content)
         logger.info("Correo de invitación enviado correctamente a %s, status code: %s", to_email, response.status_code)
     except Exception as e:
         logger.exception("Error al enviar el correo de invitación:")
