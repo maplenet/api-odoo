@@ -78,11 +78,7 @@ def send_pontis_credentials_email_v2(to_email: str, subject: str, pontis_usernam
     
 
 def send_final_match_email(to_email: str, subject: str, extra_params: dict):
-    """
-    Envía un correo de invitación (por ejemplo, para la final del torneo) usando la plantilla
-    'url_final_match_template.html'. Se pueden utilizar extra_params para realizar reemplazos dinámicos
-    en el template, si es necesario.
-    """
+
     try:
         template_path = Path(__file__).parent / "templates" / "url_final_match_template.html"
         with open(template_path, "r", encoding="utf-8") as file:
