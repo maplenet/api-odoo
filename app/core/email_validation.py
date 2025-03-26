@@ -64,12 +64,12 @@ BLACKLISTED_DOMAINS = {
 def is_valid_email(email: str) -> bool:
     if not EMAIL_REGEX.match(email):
         logger.error("Formato de email inválido: %s", email)
-        raise HTTPException(status_code=400, detail="Invalid email format.")
+        raise HTTPException(status_code=400, detail="El formato de correo es incorrecto.")
     
     domain = email.split("@")[-1].lower()
     if domain in BLACKLISTED_DOMAINS:
         logger.error("Dominio no permitido en email: %s", domain)
-        raise HTTPException(status_code=400, detail="The email domain is not allowed.")
+        raise HTTPException(status_code=400, detail="El dominio de correo electrónico no está permitido.")
     
     logger.debug("El email %s es válido", email)
     return True
