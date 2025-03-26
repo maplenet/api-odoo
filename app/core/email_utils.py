@@ -33,34 +33,34 @@ def send_reset_password_email(to_email: str, subject: str, reset_link: str):
         raise HTTPException(status_code=500, detail=f"Error al enviar el correo de restablecimiento: {str(e)}")
 
 
-def send_pontis_credentials_email(to_email: str, subject: str, pontis_username: str, pontis_password: str):
+def send_ott_mplus_credentials_email(to_email: str, subject: str, ott_mplus_username: str, ott_mplus_password: str):
     try:
-        template_path = Path(__file__).parent / "templates" / "pontis_credentials_template.html"
+        template_path = Path(__file__).parent / "templates" / "ott_mplus_credentials_template.html"
         with open(template_path, "r", encoding="utf-8") as file:
             html_template = file.read()
-        html_content = html_template.replace("{{ pontis_username }}", pontis_username)\
-                                    .replace("{{ pontis_password }}", pontis_password)
+        html_content = html_template.replace("{{ ott_mplus_username }}", ott_mplus_username)\
+                                    .replace("{{ ott_mplus_password }}", ott_mplus_password)
 
         response = send_email_sendgrid(to_email, subject, html_content)
         logger.info("Correo de credenciales enviado a %s, status code: %s", to_email, response.status_code)
     except Exception as e:
-        logger.exception("Error al enviar el correo de credenciales de Pontis:")
+        logger.exception("Error al enviar el correo de credenciales de ott_mplus:")
         raise HTTPException(status_code=500, detail=f"Error al enviar el correo de credenciales: {str(e)}")
 
     
 
-def send_pontis_credentials_email_v2(to_email: str, subject: str, pontis_username: str, pontis_password: str):
+def send_ott_mplus_credentials_email_v2(to_email: str, subject: str, ott_mplus_username: str, ott_mplus_password: str):
     try:
-        template_path = Path(__file__).parent / "templates" / "pontis_credentials_template_v2.html"
+        template_path = Path(__file__).parent / "templates" / "ott_mplus_credentials_template_v2.html"
         with open(template_path, "r", encoding="utf-8") as file:
             html_template = file.read()
-        html_content = html_template.replace("{{ pontis_username }}", pontis_username)\
-                                    .replace("{{ pontis_password }}", pontis_password)
+        html_content = html_template.replace("{{ ott_mplus_username }}", ott_mplus_username)\
+                                    .replace("{{ ott_mplus_password }}", ott_mplus_password)
 
         response = send_email_sendgrid(to_email, subject, html_content)
         logger.info("Correo de credenciales enviado a %s, status code: %s", to_email, response.status_code)
     except Exception as e:
-        logger.exception("Error al enviar el correo de credenciales de Pontis:")
+        logger.exception("Error al enviar el correo de credenciales de ott_mplus:")
         raise HTTPException(status_code=500, detail=f"Error al enviar el correo de credenciales: {str(e)}")
 
     

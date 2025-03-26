@@ -60,11 +60,11 @@ def handle_verification_request(email: str):
             return {"error": "El correo ya está habilitado."}
         else:  # Si el estado es False, generar un nuevo código
             create_verification_code(email)
-            return {"detail": "Nuevo código enviado al correo.", "correo": email}
+            return {"detail": "Nuevo código enviado al correo.", "code": 0}
     else:
         # Si no existe ningún registro previo, crear uno nuevo
         create_verification_code(email)
-        return {"detail": "Código enviado al correo.", "correo": email}
+        return {"detail": "Código enviado al correo.", "code": 0}
 
 def verify_code_and_email(email: str, code: str):
     logger.info("Iniciando verificación de código para email: %s", email)

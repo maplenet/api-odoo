@@ -6,9 +6,9 @@ import re
 from app.core.email_validation import is_valid_email
 from app.core.security import verify_token
 from app.core.database import get_odoo_connection, get_sqlite_connection
-from app.core.email_utils import send_pontis_credentials_email, send_pontis_credentials_email_v2
+from app.core.email_utils import send_ott_mplus_credentials_email, send_ott_mplus_credentials_email_v2
 from datetime import datetime, timedelta, timezone
-from app.services.api_service import build_customer_data, build_update_customer_data, check_customer_in_pontis, check_subscribe_services_expiration, create_customer_in_pontis, delete_packages_in_pontis, update_customer_in_pontis, update_customer_password_in_pontis
+from app.services.api_service import build_customer_data, build_update_customer_data, check_customer_in_ott_mplus, check_subscribe_services_expiration, create_customer_in_ott_mplus, delete_packages_in_ott_mplus, update_customer_in_ott_mplus, update_customer_password_in_ott_mplus
 from app.services.odoo_service import execute_odoo_method
 from app.services.sqlite_service import get_decrypted_password, get_user_record, insert_user_record, update_user_password
 from app.services.sqlite_service import update_user_policies  
@@ -199,15 +199,15 @@ async def change_password(request: Request, token_payload: dict = Depends(verify
         # Actualizar la contraseña en SQLite
         update_user_password(user_id, new_password)
 
-        # --- NUEVO: Actualizar la contraseña en Pontis ----
-        # Construir el customer_id para Pontis
-        pontis_customer_id = f"{settings.PREFIX_MAPLENET}" + str(user_id)
-        pontis_update = await update_customer_password_in_pontis(pontis_customer_id, new_password)
+        # --- NUEVO: Actualizar la contraseña en ott_mplus ----
+        # Construir el customer_id para ott_mplus
+        ott_mplus_customer_id = f"{settings.PREFIX_MAPLENET}" + str(user_id)
+        ott_mplus_update = await update_customer_password_in_ott_mplus(ott_mplus_customer_id, new_password)
         # (Podrías validar la respuesta según lo necesites)
         
         return {
             "detail": "Password changed successfully.",
-            "pontis_response": pontis_update
+            "ott_mplus_response": ott_mplus_update
             }
 
     except HTTPException as http_error:
@@ -259,40 +259,40 @@ async def get_user_with_service(
         
         logger.info("partner_id obtenido para user_id=%s => %s", user_id, partner_id)
 
-        # 4) Revisar Pontis para saber si el plan está activo
-        #    - "MAP0{user_id}" como ID de Pontis
-        pontis_customer_id = f"MAP0{user_id}"
+        # 4) Revisar ott_mplus para saber si el plan está activo
+        #    - "MAPX{user_id}" como ID de ott_mplus
+        ott_mplus_customer_id = f"MAPX{user_id}"
 
-        # 4.2) Consultar si existe en Pontis
-        pontis_data = await check_customer_in_pontis(pontis_customer_id)
-        pontis_response = pontis_data.get("response")
-        logger.debug("Respuesta de Pontis para MAP0%s: %s", user_id, pontis_data)
+        # 4.2) Consultar si existe en ott_mplus
+        ott_mplus_data = await check_customer_in_ott_mplus(ott_mplus_customer_id)
+        ott_mplus_response = ott_mplus_data.get("response")
+        logger.debug("Respuesta de ott_mplus para MAPX%s: %s", user_id, ott_mplus_data)
 
         # --- Lógica para determinar 'service' ---
         service = {}
 
-        if pontis_response is None:
-            # Significa que NO existe en Pontis => no hay plan => service vacío
-            logger.info("El usuario MAP0%s no existe en Pontis => sin plan => service={}", user_id)
+        if ott_mplus_response is None:
+            # Significa que NO existe en ott_mplus => no hay plan => service vacío
+            logger.info("El usuario MAPX%s no existe en ott_mplus => sin plan => service={}", user_id)
             service = {}
         else:
             # Existe => verificar si el plan está activo
-            plan_activo = check_subscribe_services_expiration(pontis_response)
+            plan_activo = check_subscribe_services_expiration(ott_mplus_response)
             if not plan_activo:
                 # => Plan expirado
-                logger.info("El plan en Pontis para MAP0%s ha caducado.", user_id)
+                logger.info("El plan en ott_mplus para MAPX%s ha caducado.", user_id)
                 service = {
                     "name": "Su plan ha caducado, por favor, adquiera un nuevo plan.",
                     "status": False
                 }
             else:
                 # => Plan sigue activo => devolvemos la última factura en Odoo con un producto permitido
-                logger.info("El plan en Pontis para MAP0%s sigue activo. Obteniendo última factura en Odoo.", user_id)
+                logger.info("El plan en ott_mplus para MAPX%s sigue activo. Obteniendo última factura en Odoo.", user_id)
                 last_invoice = _get_last_invoice_with_valid_product(odoo_conn, partner_id)
                 if not last_invoice:
                     logger.warning("No se encontró ninguna factura con productos permitidos para partner_id=%s", partner_id)
                     service = {
-                        "name": "No se encontró factura con productos válidos, aunque Pontis indica plan activo.",
+                        "name": "No se encontró factura con productos válidos, aunque ott_mplus indica plan activo.",
                         "status": True
                     }
                 else:
@@ -576,44 +576,44 @@ async def update_user(request: Request):
 
         # ----------------------------------------------------------------------------
         # # VALIDA QUE EL USUARIO NO TENGA NINGUN PLAN ACTIVADO O YA HAYA CADUCADO SU ULTIMO SERVICIO,
-        # en caso de que ya haya caducado su servicio procedemos a limpiar todos sus paquetes en pontis
+        # en caso de que ya haya caducado su servicio procedemos a limpiar todos sus paquetes en ott_mplus
         # ----------------------------------------------------------------------------
-        logger.info("Validando plan Pontis para usuario con ID=%s -> MAP0%s", id_user, id_user)
+        logger.info("Validando plan ott_mplus para usuario con ID=%s -> MAPX%s", id_user, id_user)
 
-        # pontis_customer_id = "MAP006"                                  # todo: cambiar
-        pontis_customer_id = f"MAP0{id_user}"
-        # 2) Verificar si el usuario existe en Pontis
-        pontis_data = await check_customer_in_pontis(pontis_customer_id) # todo: cambiar
-        pontis_response = pontis_data.get("response")
-        logger.debug("Respuesta de check_customer_in_pontis: %s", pontis_data)
+        # ott_mplus_customer_id = "MAPX06"                                  # todo: cambiar
+        ott_mplus_customer_id = f"MAPX{id_user}"
+        # 2) Verificar si el usuario existe en ott_mplus
+        ott_mplus_data = await check_customer_in_ott_mplus(ott_mplus_customer_id) # todo: cambiar
+        ott_mplus_response = ott_mplus_data.get("response")
+        logger.debug("Respuesta de check_customer_in_ott_mplus: %s", ott_mplus_data)
 
-        if pontis_response is None:
-            # No existe en Pontis => no tiene plan activo => se procede normal
-            logger.info("El usuario MAP0%s no existe en Pontis, sin plan activo. Se continúa con flujo normal.", id_user)
-            # => Se hará "create_customer_in_pontis" más adelante
+        if ott_mplus_response is None:
+            # No existe en ott_mplus => no tiene plan activo => se procede normal
+            logger.info("El usuario MAPX%s no existe en ott_mplus, sin plan activo. Se continúa con flujo normal.", id_user)
+            # => Se hará "create_customer_in_ott_mplus" más adelante
         else:
             # Existe => verificamos si el plan sigue activo
-            plan_activo = check_subscribe_services_expiration(pontis_response)
+            plan_activo = check_subscribe_services_expiration(ott_mplus_response)
             if plan_activo:
-                logger.error("El plan del usuario MAP0%s sigue activo en Pontis. No se puede continuar.", id_user)
-                raise HTTPException(status_code=400, detail="El plan del usuario sigue activo en Pontis.")
+                logger.error("El plan del usuario MAPX%s sigue activo en ott_mplus. No se puede continuar.", id_user)
+                raise HTTPException(status_code=400, detail="El plan del usuario sigue activo en ott_mplus.")
             else:
                 # Está expirado => limpiar paquetes y actualizar plan
-                logger.info("Plan en Pontis para MAP0%s está expirado. Limpiando paquetes...", id_user)
-                await delete_packages_in_pontis(pontis_customer_id)
-                logger.info("Paquetes eliminados en Pontis para MAP0%s. Actualizando plan...", id_user)
+                logger.info("Plan en ott_mplus para MAPX%s está expirado. Limpiando paquetes...", id_user)
+                await delete_packages_in_ott_mplus(ott_mplus_customer_id)
+                logger.info("Paquetes eliminados en ott_mplus para MAPX%s. Actualizando plan...", id_user)
 
                 # Armamos la data de actualización con base al id_plan
                 update_data_customer = await build_update_customer_data(id_plan)
-                logger.debug("Payload de actualización para Pontis: %s", update_data_customer)
+                logger.debug("Payload de actualización para ott_mplus: %s", update_data_customer)
 
-                update_response = await update_customer_in_pontis(update_data_customer, pontis_customer_id)
-                logger.info("Plan actualizado en Pontis para MAP0%s. Respuesta: %s", id_user, update_response)
+                update_response = await update_customer_in_ott_mplus(update_data_customer, ott_mplus_customer_id)
+                logger.info("Plan actualizado en ott_mplus para MAPX%s. Respuesta: %s", id_user, update_response)
 
-                # OJO: Como ya existe el usuario en Pontis y se actualizó, 
-                #      no se hará create_customer_in_pontis() más adelante.
+                # OJO: Como ya existe el usuario en ott_mplus y se actualizó, 
+                #      no se hará create_customer_in_ott_mplus() más adelante.
                 # Guardamos un "flag" para saber que ya se hizo 'update'.
-                pontis_response["already_updated"] = True
+                ott_mplus_response["already_updated"] = True
 
         # ----------------------------------------------------------------------------
         # Continuamos con la actualización en Odoo
@@ -642,26 +642,26 @@ async def update_user(request: Request):
         logger.debug("Contacto en Odoo tras actualización: %s", updated_contact[0]['id'])
 
         # -------------------------------------------------------------------------
-        # Según si el usuario ya existía en Pontis o no, se hace create o no
+        # Según si el usuario ya existía en ott_mplus o no, se hace create o no
         # -------------------------------------------------------------------------
-        if pontis_response is None:
-            # => Caso: no existía => crear en Pontis
-            logger.info("Creando usuario en Pontis (no existía).")
+        if ott_mplus_response is None:
+            # => Caso: no existía => crear en ott_mplus
+            logger.info("Creando usuario en ott_mplus (no existía).")
             customer_data = build_customer_data(id_user, updated_contact, id_plan, plain_password)
-            logger.debug("Payload para create_customer_in_pontis: %s", customer_data)
+            logger.debug("Payload para create_customer_in_ott_mplus: %s", customer_data)
 
-            create_customer_response = await create_customer_in_pontis(customer_data) # TODO: DESCOMENTAR
+            create_customer_response = await create_customer_in_ott_mplus(customer_data) # TODO: DESCOMENTAR
             if not create_customer_response.get("response"):
-                logger.error("No se obtuvieron credenciales de Pontis tras create_customer_in_pontis.")
-                raise HTTPException(status_code=500, detail="No se obtuvieron credenciales de Pontis.")
-            pontis_username = create_customer_response["response"]
-            logger.info("Credenciales en Pontis creadas/obtenidas: %s", pontis_username)
-            # pontis_username = f"MAP0{id_user}" # TODO: Borrar
+                logger.error("No se obtuvieron credenciales de ott_mplus tras create_customer_in_ott_mplus.")
+                raise HTTPException(status_code=500, detail="No se obtuvieron credenciales de ott_mplus.")
+            ott_mplus_username = create_customer_response["response"]
+            logger.info("Credenciales en ott_mplus creadas/obtenidas: %s", ott_mplus_username)
+            # ott_mplus_username = f"MAPX{id_user}" # TODO: Borrar
         else:
             # => Caso: ya existía => ya hicimos update si plan estaba expirado
-            # Reusamos su ID de Pontis
-            logger.info("El usuario MAP0%s ya existe en Pontis; se omite create_customer_in_pontis.", id_user)
-            pontis_username = f"MAP0{id_user}"
+            # Reusamos su ID de ott_mplus
+            logger.info("El usuario MAPX%s ya existe en ott_mplus; se omite create_customer_in_ott_mplus.", id_user)
+            ott_mplus_username = f"MAPX{id_user}"
 
         # obtenemos el email del usuario desde SQLite
         user_record = get_user_record(id_user)
@@ -670,21 +670,21 @@ async def update_user(request: Request):
 
         if id_plan in [46, 47, 48, 49]:
             # Enviar credenciales al usuario por correo
-            logger.info("Enviando credenciales de Pontis al correo: %s", email)
-            send_pontis_credentials_email_v2(
+            logger.info("Enviando credenciales de ott_mplus al correo: %s", email)
+            send_ott_mplus_credentials_email_v2(
                 to_email=email,
                 subject="Tus credenciales de acceso:",
-                pontis_username=pontis_username,
-                pontis_password=plain_password
+                ott_mplus_username=ott_mplus_username,
+                ott_mplus_password=plain_password
             )
         else:
             # Enviar credenciales al usuario por correo
-            logger.info("Enviando credenciales de Pontis al correo: %s", email)
-            send_pontis_credentials_email(
+            logger.info("Enviando credenciales de ott_mplus al correo: %s", email)
+            send_ott_mplus_credentials_email(
                 to_email=email,
                 subject="Tus credenciales de acceso:",
-                pontis_username=pontis_username,
-                pontis_password=plain_password
+                ott_mplus_username=ott_mplus_username,
+                ott_mplus_password=plain_password
             )
         
         # ----------------------- Flujo de creación de factura -----------------------
@@ -762,7 +762,7 @@ async def update_user(request: Request):
             "detail": "Factura creada y pagada correctamente", 
             "invoice_id": invoice_id, 
             "payment_id": payment_register_id,
-            "res_pontis": {"pontis_username": pontis_username}
+            "res_ott_mplus": {"ott_mplus_username": ott_mplus_username}
         }
         
     except HTTPException as http_error:
@@ -785,7 +785,7 @@ async def search_contact(request: Request):
     verifica si tiene facturas pagadas con planes válidos,
     si la factura fue emitida (o es válida) -> se valida si ya está asociado a un usuario,
     si no hay usuario, se retorna la info del contacto,
-    si sí hay usuario, se consulta en Pontis para ver si el plan ya expiró o sigue activo.
+    si sí hay usuario, se consulta en ott_mplus para ver si el plan ya expiró o sigue activo.
     """
     try:
         logger.info("Iniciando búsqueda de contacto en Odoo.")
@@ -844,16 +844,16 @@ async def search_contact(request: Request):
                 "planId": plan_id
             }
         else:
-            logger.info("Contacto asociado al usuario con ID=%s. Validando en Pontis...", user_id)
-            pontis_id = f"MAP0{user_id}"
+            logger.info("Contacto asociado al usuario con ID=%s. Validando en ott_mplus...", user_id)
+            ott_mplus_id = f"MAPX{user_id}"
 
-            # 5. Llamar a la API de Pontis para ver si el plan sigue activo
-            pontis_data = await check_customer_in_pontis(pontis_id)
+            # 5. Llamar a la API de ott_mplus para ver si el plan sigue activo
+            ott_mplus_data = await check_customer_in_ott_mplus(ott_mplus_id)
 
             # Si "response" es None, no hay plan => devolvemos contacto
-            pontis_response = pontis_data.get("response")
-            if pontis_response is None:
-                logger.info("El usuario en Pontis no tiene planes activos (response=null).")
+            ott_mplus_response = ott_mplus_data.get("response")
+            if ott_mplus_response is None:
+                logger.info("El usuario en ott_mplus no tiene planes activos (response=null).")
                 plan_id = get_plan_id_from_invoice(conn, invoice)
                 return {
                     "id": str(contact_info["id"]),
@@ -865,16 +865,16 @@ async def search_contact(request: Request):
                 }
             else:
                 # Revisar si alguno de los paquetes [6212,6217,6293,6294] está activo
-                logger.debug("Pontis data (response) encontrado, revisando suscripciones...")
-                plan_activo = check_subscribe_services_expiration(pontis_response)
+                logger.debug("ott_mplus data (response) encontrado, revisando suscripciones...")
+                plan_activo = check_subscribe_services_expiration(ott_mplus_response)
                 if plan_activo:
-                    logger.error("El plan sigue activo en Pontis. No se puede continuar.")
+                    logger.error("El plan sigue activo en ott_mplus. No se puede continuar.")
                     raise HTTPException(
                         status_code=400,
-                        detail="El período de servicio aún sigue activo en Pontis."
+                        detail="El período de servicio aún sigue activo en ott_mplus."
                     )
                 else:
-                    logger.info("El plan en Pontis ya expiró. Devolviendo datos de contacto.")
+                    logger.info("El plan en ott_mplus ya expiró. Devolviendo datos de contacto.")
                     plan_id = get_plan_id_from_invoice(conn, invoice)
                     return {
                         "id": str(contact_info["id"]),
@@ -1077,52 +1077,52 @@ async def handle_associated_user_flow(conn, id_contact: int, contact_info: dict)
     id_plan = get_plan_id_from_invoice(conn, invoice)
     logger.info("Plan ID obtenido para la factura: %s", id_plan)
     
-    # Armar el ID para Pontis (concatenar 'MAP0' + id_user)
-    pontis_customer_id = f"{settings.PREFIX_MAPLENET}" + str(id_user)
-    logger.debug("ID de cliente para Pontis: %s", pontis_customer_id)
+    # Armar el ID para ott_mplus (concatenar 'MAPX' + id_user)
+    ott_mplus_customer_id = f"{settings.PREFIX_MAPLENET}" + str(id_user)
+    logger.debug("ID de cliente para ott_mplus: %s", ott_mplus_customer_id)
     
        
-    res = await delete_packages_in_pontis(pontis_customer_id)
+    res = await delete_packages_in_ott_mplus(ott_mplus_customer_id)
 
     if res:
-        logger.info("Paquetes eliminados en Pontis: %s", pontis_customer_id)
+        logger.info("Paquetes eliminados en ott_mplus: %s", ott_mplus_customer_id)
 
 
     update_data_customer = await build_update_customer_data(id_plan)
-    logger.debug("Datos para actualizar en Pontis: %s", update_data_customer)
+    logger.debug("Datos para actualizar en ott_mplus: %s", update_data_customer)
 
-    update_response = await update_customer_in_pontis(update_data_customer, pontis_customer_id)
-    logger.info("Respuesta de actualización en Pontis: %s", update_response)
+    update_response = await update_customer_in_ott_mplus(update_data_customer, ott_mplus_customer_id)
+    logger.info("Respuesta de actualización en ott_mplus: %s", update_response)
 
-    if pontis_customer_id != update_response.get("response"):
-        logger.warning("El ID de cliente de Pontis no coincide con el esperado.")
+    if ott_mplus_customer_id != update_response.get("response"):
+        logger.warning("El ID de cliente de ott_mplus no coincide con el esperado.")
     else:
-        logger.info("Cliente actualizado en Pontis correctamente.")
+        logger.info("Cliente actualizado en ott_mplus correctamente.")
     
 
     if id_plan in [46, 47, 48, 49]:
-         # 14. Enviar por correo las credenciales de acceso a Pontis
-        send_pontis_credentials_email_v2(
+         # 14. Enviar por correo las credenciales de acceso a ott_mplus
+        send_ott_mplus_credentials_email_v2(
             to_email=contact_info.get("email"),
             subject="Tus credenciales de acceso a M+",
-            pontis_username=pontis_customer_id,  # Ajustar: aquí se usa el ID de cliente para Pontis.
-            pontis_password=existing_password
+            ott_mplus_username=ott_mplus_customer_id,  # Ajustar: aquí se usa el ID de cliente para ott_mplus.
+            ott_mplus_password=existing_password
         )
         logger.info("Correo de credenciales enviado a: %s", contact_info.get("email"))
 
     else:
-        # 14. Enviar por correo las credenciales de acceso a Pontis
-        send_pontis_credentials_email(
+        # 14. Enviar por correo las credenciales de acceso a ott_mplus
+        send_ott_mplus_credentials_email(
             to_email=contact_info.get("email"),
             subject="Tus credenciales de acceso a M+",
-            pontis_username=pontis_customer_id,  # Ajustar: aquí se usa el ID de cliente para Pontis.
-            pontis_password=existing_password
+            ott_mplus_username=ott_mplus_customer_id,  # Ajustar: aquí se usa el ID de cliente para ott_mplus.
+            ott_mplus_password=existing_password
         )
         logger.info("Correo de credenciales enviado a: %s", contact_info.get("email"))
     
     return {
-        "detail": "Contacto actualizado en Pontis correctamente.",
-        "pontis_username": pontis_customer_id,
+        "detail": "Contacto actualizado en ott_mplus correctamente.",
+        "ott_mplus_username": ott_mplus_customer_id,
         "existing_password": existing_password,
         "update_response": update_response # comentar
     }
@@ -1206,42 +1206,42 @@ async def handle_non_associated_user_flow(conn, id_contact: int, contact_info: d
         raise HTTPException(status_code=500, detail="Error al obtener datos actualizados del contacto.")
     
     customer_data = build_customer_data(new_user_id, updated_contact, id_plan, new_password)
-    logger.debug("Payload para Pontis: %s", customer_data)
+    logger.debug("Payload para ott_mplus: %s", customer_data)
 
-    user_name_pontis = f"{settings.PREFIX_MAPLENET}" + str(new_user_id)
+    user_name_ott_mplus = f"{settings.PREFIX_MAPLENET}" + str(new_user_id)
 
-    activation_response = await create_customer_in_pontis(customer_data)
-    pontis_username = activation_response["response"]
+    activation_response = await create_customer_in_ott_mplus(customer_data)
+    ott_mplus_username = activation_response["response"]
 
 
-    if pontis_username != user_name_pontis:
-        logger.warning("El ID de usuario en Pontis no coincide con el esperado: %s", pontis_username)
+    if ott_mplus_username != user_name_ott_mplus:
+        logger.warning("El ID de usuario en ott_mplus no coincide con el esperado: %s", ott_mplus_username)
     else:
-        logger.info("ID de usuario en Pontis: %s", pontis_username)
+        logger.info("ID de usuario en ott_mplus: %s", ott_mplus_username)
 
-    logger.info("Respuesta de activación en Pontis: %s", activation_response)
+    logger.info("Respuesta de activación en ott_mplus: %s", activation_response)
 
 
     if id_plan in [46, 47, 48, 49]:
-        send_pontis_credentials_email_v2(
+        send_ott_mplus_credentials_email_v2(
             to_email=contact_info.get("email"),
             subject="Tus credenciales de acceso a M+",
-            pontis_username=user_name_pontis,  
-            pontis_password=new_password
+            ott_mplus_username=user_name_ott_mplus,  
+            ott_mplus_password=new_password
         )
         logger.info("Correo de credenciales enviado a: %s", contact_info.get("email"))
     else:
-        send_pontis_credentials_email(
+        send_ott_mplus_credentials_email(
             to_email=contact_info.get("email"),
             subject="Tus credenciales de acceso a M+",
-            pontis_username=user_name_pontis,  
-            pontis_password=new_password
+            ott_mplus_username=user_name_ott_mplus,  
+            ott_mplus_password=new_password
         )
         logger.info("Correo de credenciales enviado a: %s", contact_info.get("email"))
     
     return {
-        "detail": "Contacto activado como usuario portal en Pontis correctamente.",
-        "pontis_username": user_name_pontis,
+        "detail": "Contacto activado como usuario portal en ott_mplus correctamente.",
+        "ott_mplus_username": user_name_ott_mplus,
         "new_password": new_password,
         "activation_response": activation_response
     }

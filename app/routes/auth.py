@@ -9,7 +9,7 @@ from app.core.email_validation import is_valid_email
 from app.core.security import create_access_token, create_password_reset_token, verify_token, oauth2_scheme
 from app.core.database import get_odoo_connection
 from app.routes.users import _is_valid_password
-from app.services.api_service import update_customer_password_in_pontis
+from app.services.api_service import update_customer_password_in_ott_mplus
 from app.services.sqlite_service import update_user_password
 from app.services.token_service import get_token_record, mark_token_as_used, revoke_token, store_token
 from app.services.verification_service import handle_verification_request, verify_code_and_email
@@ -378,16 +378,16 @@ async def reset_password(request: Request):
         # Actualizar la contraseña en SQLite
         update_user_password(user_id, new_password)
 
-        # Actualizar la contraseña en Pontis
-        pontis_customer_id = f"{settings.PREFIX_MAPLENET}" + str(user_id)
-        response_pontis  = await update_customer_password_in_pontis(pontis_customer_id, new_password)
+        # Actualizar la contraseña en ott_mplus
+        ott_mplus_customer_id = f"{settings.PREFIX_MAPLENET}" + str(user_id)
+        response_ott_mplus  = await update_customer_password_in_ott_mplus(ott_mplus_customer_id, new_password)
 
         # Marcar el token de restablecimiento como usado
         mark_token_as_used(reset_token)
 
         return {
             "detail": "Contraseña restablecida exitosamente.",
-            "pontis_response": response_pontis
+            "ott_mplus_response": response_ott_mplus
             }
 
     except HTTPException as http_error:

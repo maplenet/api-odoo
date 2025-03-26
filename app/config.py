@@ -19,9 +19,7 @@ class Settings(BaseSettings):
 	# variable de encriptación
 	ENCRYPTION_KEY: str = Field(..., env="ENCRYPTION_KEY")
 	LOG_LEVEL: str = Field("DEBUG", env="LOG_LEVEL") 
-	OTT_URL_BASE_API: str = Field(..., env="OTT_URL_BASE_API")
-	OTT_USERNAME: str = Field(..., env="OTT_USERNAME")
-	OTT_PASSWORD: str = Field(..., env="OTT_PASSWORD")
+	OTT_MPLUS_URL_BASE_API: str = Field(..., env="OTT_MPLUS_URL_BASE_API")
 	SENDGRID_API_KEY: str = Field(..., env="SENDGRID_API_KEY")
 	PREFIX_MAPLENET: str = Field(..., env="PREFIX_MAPLENET")
 

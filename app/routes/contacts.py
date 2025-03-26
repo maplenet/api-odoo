@@ -4,13 +4,10 @@ from app.core.security import verify_token
 from app.core.database import get_odoo_connection
 from app.core.email_utils import send_final_match_email
 from app.services.odoo_service import execute_odoo_method
-
-import logging
-
+from app.core.logging_config import logger
 from app.services.sqlite_service import update_user_record
 
 router = APIRouter(prefix="/contacts", tags=["contacts"])
-logger = logging.getLogger(__name__)
 
 @router.get("/search")
 async def search_contacts(

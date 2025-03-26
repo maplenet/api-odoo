@@ -200,8 +200,8 @@ def build_customer_data(id_user, contact_data, id_plan, password):
     return customer_data
 
 
-async def create_customer_in_pontis(customer_data):
-    url = f"{settings.OTT_URL_BASE_API}/customers/create"
+async def create_customer_in_ott_mplus(customer_data):
+    url = f"{settings.OTT_MPLUS_URL_BASE_API}/customers/create"
     headers = {
         "Content-Type": "application/json"
     }
@@ -213,16 +213,16 @@ async def create_customer_in_pontis(customer_data):
     except httpx.HTTPStatusError as e:
         raise HTTPException(
             status_code=e.response.status_code,
-            detail=f"Error al crear el cliente en Pontis: {e.response.text}"
+            detail=f"Error al crear el cliente en ott_mplus: {e.response.text}"
         )
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Error interno al conectarse a la API de Pontis: {str(e)}"
+            detail=f"Error interno al conectarse a la API de ott_mplus: {str(e)}"
         )
     
-async def update_customer_password_in_pontis(customer_id: str, new_password: str):
-    url = f"{settings.OTT_URL_BASE_API}/customers/{customer_id}"
+async def update_customer_password_in_ott_mplus(customer_id: str, new_password: str):
+    url = f"{settings.OTT_MPLUS_URL_BASE_API}/customers/{customer_id}"
     payload = {
         "customerAccount": {
             "password": new_password
@@ -237,18 +237,18 @@ async def update_customer_password_in_pontis(customer_id: str, new_password: str
     except httpx.HTTPStatusError as e:
         raise HTTPException(
             status_code=e.response.status_code,
-            detail=f"Error al actualizar la contraseña en Pontis: {e.response.text}"
+            detail=f"Error al actualizar la contraseña en ott_mplus: {e.response.text}"
         )
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Error interno al conectarse a la API de Pontis: {str(e)}"
+            detail=f"Error interno al conectarse a la API de ott_mplus: {str(e)}"
         )
     
  # DE ACA PARA ABJO ES NUEVO------------------------------------------------------------------------------------------   
 
-async def delete_packages_in_pontis(pontis_customer_id):
-    url = f"{settings.OTT_URL_BASE_API}/customers/deleteServices/{pontis_customer_id}" 
+async def delete_packages_in_ott_mplus(ott_mplus_customer_id):
+    url = f"{settings.OTT_MPLUS_URL_BASE_API}/customers/deleteServices/{ott_mplus_customer_id}" 
     headers = {"Content-Type": "application/json"}
     try:
         async with httpx.AsyncClient() as client:
@@ -258,12 +258,12 @@ async def delete_packages_in_pontis(pontis_customer_id):
     except httpx.HTTPStatusError as e:
         raise HTTPException(
             status_code=e.response.status_code,
-            detail=f"Error al eliminar los paquetes en Pontis: {e.response.text}"
+            detail=f"Error al eliminar los paquetes en ott_mplus: {e.response.text}"
         )
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Error interno al conectarse a la API de Pontis: {str(e)}"
+            detail=f"Error interno al conectarse a la API de ott_mplus: {str(e)}"
         )
 
     return true
@@ -345,9 +345,9 @@ async def build_update_customer_data(id_plan):
 
 
 
-async def update_customer_in_pontis(update_data_customer, pontis_customer_id):
+async def update_customer_in_ott_mplus(update_data_customer, ott_mplus_customer_id):
 
-    url = f"{settings.OTT_URL_BASE_API}/customers/{pontis_customer_id}" 
+    url = f"{settings.OTT_MPLUS_URL_BASE_API}/customers/{ott_mplus_customer_id}" 
 
     headers = {"Content-Type": "application/json"}
     
@@ -359,37 +359,37 @@ async def update_customer_in_pontis(update_data_customer, pontis_customer_id):
     except httpx.HTTPStatusError as e:
         raise HTTPException(
             status_code=e.response.status_code,
-            detail=f"Error al actualizar el cliente en Pontis: {e.response.text}"
+            detail=f"Error al actualizar el cliente en ott_mplus: {e.response.text}"
         )
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Error interno al conectarse a la API de Pontis: {str(e)}"
+            detail=f"Error interno al conectarse a la API de ott_mplus: {str(e)}"
         )
     
 
-async def check_customer_in_pontis(pontis_customer_id: str) -> dict:
+async def check_customer_in_ott_mplus(ott_mplus_customer_id: str) -> dict:
     """
-    Llama al endpoint GET /getCustomer/<pontis_customer_id> en la API de Pontis.
+    Llama al endpoint GET /getCustomer/<ott_mplus_customer_id> en la API de ott_mplus.
     Retorna el JSON completo si existe, o un dict con "response": None si no existe.
     """
-    url = f"{settings.OTT_URL_BASE_API}/customers/getCustomer/{pontis_customer_id}"
+    url = f"{settings.OTT_MPLUS_URL_BASE_API}/customers/getCustomer/{ott_mplus_customer_id}"
     
-    logger.debug("Consultando API Pontis en URL: %s", url)
+    logger.debug("Consultando API ott_mplus en URL: %s", url)
     try:
         async with httpx.AsyncClient() as client:
             response = await client.get(url)
             # No usamos raise_for_status() porque la API puede devolver 200 con un error en el JSON.
             data = response.json()
-            logger.debug("Respuesta de Pontis: %s", data)
+            logger.debug("Respuesta de ott_mplus: %s", data)
             return data
     except Exception as e:
-        logger.error("Error conectándose a la API de Pontis: %s", str(e))
-        raise HTTPException(status_code=500, detail="Error interno al conectarse a Pontis.")
+        logger.error("Error conectándose a la API de ott_mplus: %s", str(e))
+        raise HTTPException(status_code=500, detail="Error interno al conectarse a ott_mplus.")
     
-def check_subscribe_services_expiration(pontis_response: dict) -> bool:
+def check_subscribe_services_expiration(ott_mplus_response: dict) -> bool:
     """
-    Dado un dict con la respuesta de Pontis (campo 'response' != null),
+    Dado un dict con la respuesta de ott_mplus (campo 'response' != null),
     revisa en 'subscribeService' si alguno de los servicios [6212, 6217, 6293, 6294]
     tiene un expireDt >= hoy o vacío (lo cual indica plan activo).
     
@@ -399,7 +399,7 @@ def check_subscribe_services_expiration(pontis_response: dict) -> bool:
     service_ids_interes = {6212, 6217, 6293, 6294}
     hoy = datetime.now(timezone.utc).date()
     
-    subscribe_services = pontis_response.get("subscribeService", [])
+    subscribe_services = ott_mplus_response.get("subscribeService", [])
     for srv in subscribe_services:
         menu = srv.get("serviceMenu", {})
         s_id = menu.get("serviceMenuId")

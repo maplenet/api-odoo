@@ -7,7 +7,7 @@ if var_env == "maplenet-prod":
     PRODUCTS = {
         "M+_ESTANDAR_PROMO": 6,
         "M+_ESTANDAR": 7,
-        "M+ _REMIUM": 8,
+        "M+ _PREMIUM": 8,
         "M+_PREMIUM_+_HBO": 9,
         "BRASIL_VS_COLOMBIA_20-03-2025": 46,
         "ECUADOR_VS_VENEZUELA_21-03-2025": 47,
