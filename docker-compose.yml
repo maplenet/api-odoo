@@ -5,6 +5,6 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - /home/ubuntu/prod/db/verification.db:/app/verification.db
+      - /home/ubuntu/prod/db/storage/:/app/storage/
       - /home/ubuntu/prod/.env:/app/.env
     container_name: api-odoo
