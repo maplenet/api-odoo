@@ -20,8 +20,15 @@ class Settings(BaseSettings):
 	OTT_USERNAME: str = Field(..., env="OTT_USERNAME")
 	OTT_PASSWORD: str = Field(..., env="OTT_PASSWORD")
 	URL_BASE_API_PONTIS: str = Field(..., env="URL_BASE_API_PONTIS")
+
+	# Sengrid
 	EMAIL_FROM: str = Field(..., env="EMAIL_FROM")
 	SENDGRID_API_KEY: str = Field(..., env="SENDGRID_API_KEY")
+
+	 # Nueva configuración para Mailgun
+	MAILGUN_API_KEY: str = Field(..., env="MAILGUN_API_KEY")
+	MAILGUN_DOMAIN: str = Field(..., env="MAILGUN_DOMAIN")
+	MAILGUN_BASE_URL: str = Field(..., env="MAILGUN_BASE_URL")
 	
 	class Config:
 		env_file = ".env"

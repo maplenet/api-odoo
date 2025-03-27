@@ -1,23 +1,26 @@
 from pathlib import Path
 from fastapi import HTTPException
 from app.core.logging_config import logger
+from app.core.mailgun_email import send_email_mailgun
 from app.core.sendgrid_email import send_email_sendgrid
 
 
 
 def send_verification_email(to_email: str, subject: str, code: str):
+    """
+    Envía un correo de verificación usando la plantilla 'email_template.html'.
+    Reemplaza {{ code }} en el template con el código de verificación.
+    """
     try:
         template_path = Path(__file__).parent / "templates" / "email_template.html"
         with open(template_path, "r", encoding="utf-8") as file:
             html_template = file.read()
         html_content = html_template.replace("{{ code }}", code)
 
-        # Enviar usando SendGrid
-        response = send_email_sendgrid(to_email, subject, html_content)
+        # Enviar usando Mailgun
+        response = send_email_mailgun(to_email, subject, html_content)
         logger.info("Correo de verificación enviado a %s, status code: %s", to_email, response.status_code)
-        email_notifify = "notifications@maplenet.com.bo"
-        subject_notify = "Correo enviado a: " + to_email + " con el asunto: " + subject
-        send_email_sendgrid( email_notifify, subject_notify, html_content)
+        return response
     except Exception as e:
         logger.exception("Error al enviar el correo de verificación:")
         raise HTTPException(status_code=500, detail=f"Error al enviar el correo de verificación: {str(e)}")
