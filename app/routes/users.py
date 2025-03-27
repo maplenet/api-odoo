@@ -785,8 +785,8 @@ async def update_user(request: Request):
             'amount': invoice_info['amount_total'],
             'currency_id': invoice_info['currency_id'][0],
             'partner_id': invoice_info['partner_id'][0],
-            'journal_id': 7,
-            'partner_bank_id': 1,  
+            'journal_id': 3,
+            'partner_bank_id': False,  
         }
         logger.debug("Payload para registrar pago: %s", payment_data)
         

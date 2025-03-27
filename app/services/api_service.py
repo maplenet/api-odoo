@@ -134,9 +134,8 @@ def build_customer_data(
     # 2) Armar la lista con servicios "obligatorios" (siempre con expireDt = "")
     #   tal cual tu código original
     subscribe_service_list = [
-        {"effectiveDt": eff1, "expireDt": "", "serviceMenu": {"serviceMenuId": "6213"}},
-        {"effectiveDt": eff1, "expireDt": "", "serviceMenu": {"serviceMenuId": "6214"}},
-        {"effectiveDt": eff1, "expireDt": "", "serviceMenu": {"serviceMenuId": "6215"}}
+        {"effectiveDt": eff1, "expireDt": "", "serviceMenu": {"serviceMenuId": "2"}},
+        {"effectiveDt": eff1, "expireDt": "", "serviceMenu": {"serviceMenuId": "3"}},
     ]
 
     # 3) Agregar los servicios del primer plan

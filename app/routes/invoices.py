@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 # Obtener todos los datos de un factura
 @router.get("/get_invoice/{invoice_id}")
-async def get_invoice(invoice_id: int, token: str = Depends(verify_token)):
+async def get_invoice(invoice_id: int):
     """
     Obtiene todos los datos de una factura en Odoo.
     """
