@@ -1,8 +1,12 @@
-import logging
 import os
+import logging
 from app.config import settings
 
-# Usa el nivel definido en la configuración o en la variable de entorno
+# Asegúrate de que el directorio existe
+log_directory = "storage"
+os.makedirs(log_directory, exist_ok=True)
+log_file_path = os.path.join(log_directory, "app.log")
+
 log_level = settings.LOG_LEVEL.upper()  # Por ejemplo, 'DEBUG' o 'INFO'
 
 logging.basicConfig(
@@ -10,9 +14,11 @@ logging.basicConfig(
     format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
     handlers=[
         logging.StreamHandler(),
-        logging.FileHandler('app.log', encoding='utf-8')
+        logging.FileHandler(log_file_path, encoding='utf-8')
     ]
 )
 
 logger = logging.getLogger(__name__)
 logger.debug("Logging configurado en nivel DEBUG")
+
+logging.getLogger("python_http_client.client").setLevel(logging.WARNING)
