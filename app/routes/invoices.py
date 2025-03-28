@@ -46,6 +46,40 @@ async def get_invoice(invoice_id: int):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al obtener la factura: {str(e)}")
     
+
+@router.get("/paid_or_in_payment/{contact_id}")
+async def get_paid_or_in_payment_invoices(contact_id: int):
+    """
+    Devuelve todas las facturas con payment_state 'paid' o 'in_payment'
+    para un contacto dado por su id.
+    """
+    logger.info("Iniciando consulta de facturas 'paid' o 'in_payment' para contact_id: %s", contact_id)
+    try:
+        conn = get_odoo_connection()
+        invoices = execute_odoo_method(
+            conn,
+            'account.move',
+            'search_read',
+            [[
+                ('partner_id', '=', contact_id),
+                ('payment_state', 'in', ['paid', 'in_payment'])
+            ]],
+            {
+                'fields': ['id', 'invoice_date', 'amount_total', 'invoice_line_ids'],
+                'order': 'invoice_date desc'
+            }
+        )
+        if not invoices:
+            logger.info("No se encontraron facturas 'paid' o 'in_payment' para contact_id: %s", contact_id)
+            raise HTTPException(status_code=404, detail="No paid or in_payment invoices found for the given contact")
+        
+        logger.info("Se encontraron %s facturas para contact_id: %s", len(invoices), contact_id)
+        return {"invoices": invoices}
+    except Exception as e:
+        logger.exception("Error al obtener facturas para contact_id: %s", contact_id)
+        raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
+
+    
 # Crear una factura en estado de borrador
 @router.post("/create_draft_invoice")
 async def create_draft_invoice(request: Request, token: str = Depends(verify_token)):

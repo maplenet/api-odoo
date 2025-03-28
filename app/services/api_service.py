@@ -420,7 +420,7 @@ async def check_customer_in_pontis(pontis_customer_id: str) -> dict:
     Retorna el JSON completo si existe, o un dict con "response": None si no existe.
     """
     url = f"{settings.OTT_URL_BASE_API}/customers/getCustomer/{pontis_customer_id}"
-    # url = f"{settings.OTT_URL_BASE_API}/customers/getCustomer/MAP006"   #TODO: CAMBIAR------------
+    # url = f"{settings.OTT_URL_BASE_API}/customers/getCustomer/MAP006"   #TODO: CAMBIAR O BORARA------------
 
     
     logger.debug("Consultando API Pontis en URL: %s", url)
