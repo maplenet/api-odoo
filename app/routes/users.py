@@ -335,7 +335,7 @@ def _get_last_invoice_with_valid_product(odoo_conn, partner_id: int):
         'search_read',
         [[
             ('partner_id', '=', partner_id),
-            ('payment_state', '=', 'paid'),
+            ('payment_state', 'in', ['paid', 'in_payment']),
             '|', ('vr_estado', '=', 'send_and_confirm'), ('vr_estado', '=', 'pending')
         ]],
         {
@@ -978,7 +978,7 @@ def get_valid_invoices_for_search(conn, id_contact: int, allowed_plan_ids: list)
     logger.debug("Iniciando búsqueda de facturas pagadas para contacto ID: %s", id_contact)
     invoices = execute_odoo_method(
         conn, 'account.move', 'search_read',
-        [[('partner_id', '=', id_contact), ('payment_state', '=', 'paid')]],
+        [[('partner_id', '=', id_contact), ('payment_state', 'in', ['paid', 'in_payment'])]],
         {'fields': ['invoice_date', 'invoice_line_ids']}
     )
     logger.debug("Facturas encontradas: %s", invoices)
@@ -1034,7 +1034,7 @@ def get_valid_invoices(conn, id_contact: int, allowed_plan_ids: list) -> list:
     logger.debug("Iniciando búsqueda de facturas pagadas para contacto ID: %s", id_contact)
     invoices = execute_odoo_method(
         conn, 'account.move', 'search_read',
-        [[('partner_id', '=', id_contact), ('payment_state', '=', 'paid')]],
+        [[('partner_id', '=', id_contact), ('payment_state', 'in', ['paid', 'in_payment'])]],
         {'fields': ['invoice_date', 'invoice_line_ids']}
     )
     logger.debug("Facturas encontradas: %s", invoices)
