@@ -250,8 +250,14 @@ async def get_user_with_service(
 
         # 4.2) Consultar si existe en Pontis
         pontis_data = await check_customer_in_pontis(pontis_customer_id)
-        pontis_response = pontis_data.get("response")
         logger.debug("Respuesta de Pontis para MAP0%s: %s", user_id, pontis_data)
+
+        if pontis_data.get("response"):
+            # Extraer el customerId del objeto "customer"
+            pontis_response = pontis_data["response"].get("customer", {}).get("customerId")
+        else:
+            pontis_response = None
+        logger.debug("Valor de pontis_response para MAP0%s: %s", user_id, pontis_response)
 
         # --- Lógica para determinar 'service' ---
         service = {}
@@ -335,7 +341,7 @@ def _get_last_invoice_with_valid_product(odoo_conn, partner_id: int):
         'search_read',
         [[
             ('partner_id', '=', partner_id),
-            ('payment_state', '=', 'paid'),
+            ('payment_state', 'in', ['paid', 'in_payment']),
             '|', ('vr_estado', '=', 'send_and_confirm'), ('vr_estado', '=', 'pending')
         ]],
         {
@@ -602,8 +608,12 @@ async def update_user(request: Request):
         # 2) Verificar si el usuario existe en Pontis
         pontis_data = await check_customer_in_pontis(pontis_customer_id) # todo: cambiar
         logger.debug("Respuesta de pontis: %s", pontis_data)
-        pontis_response = pontis_data.get("response")
-        logger.debug("Respuesta de check_customer_in_pontis: %s", pontis_response)
+        if pontis_data.get("response"):
+            # Extraer el customerId del objeto "customer"
+            pontis_response = pontis_data["response"].get("customer", {}).get("customerId")
+        else:
+            pontis_response = None
+        logger.debug("Valor de pontis_response para MAP0%s: %s", id_user, pontis_response)
 
         if pontis_response is None:
             # No existe en Pontis => no tiene plan activo => se procede normal
@@ -785,8 +795,8 @@ async def update_user(request: Request):
             'amount': invoice_info['amount_total'],
             'currency_id': invoice_info['currency_id'][0],
             'partner_id': invoice_info['partner_id'][0],
-            'journal_id': 7,
-            'partner_bank_id': 1,  
+            'journal_id': 3,
+            'partner_bank_id': False,  
         }
         logger.debug("Payload para registrar pago: %s", payment_data)
         
@@ -896,6 +906,7 @@ async def search_contact(request: Request):
             # 5. Llamar a la API de Pontis para ver si el plan sigue activo
             await login_to_external_api()  # (si requieres un login previo)
             pontis_data = await check_customer_in_pontis(pontis_id)
+            logger.debug("Respuesta de Pontis: %s", pontis_data)
 
             # Si "response" es None, no hay plan => devolvemos contacto
             pontis_response = pontis_data.get("response")
@@ -978,7 +989,7 @@ def get_valid_invoices_for_search(conn, id_contact: int, allowed_plan_ids: list)
     logger.debug("Iniciando búsqueda de facturas pagadas para contacto ID: %s", id_contact)
     invoices = execute_odoo_method(
         conn, 'account.move', 'search_read',
-        [[('partner_id', '=', id_contact), ('payment_state', '=', 'paid')]],
+        [[('partner_id', '=', id_contact), ('payment_state', 'in', ['paid', 'in_payment'])]],
         {'fields': ['invoice_date', 'invoice_line_ids']}
     )
     logger.debug("Facturas encontradas: %s", invoices)
@@ -1034,7 +1045,7 @@ def get_valid_invoices(conn, id_contact: int, allowed_plan_ids: list) -> list:
     logger.debug("Iniciando búsqueda de facturas pagadas para contacto ID: %s", id_contact)
     invoices = execute_odoo_method(
         conn, 'account.move', 'search_read',
-        [[('partner_id', '=', id_contact), ('payment_state', '=', 'paid')]],
+        [[('partner_id', '=', id_contact), ('payment_state', 'in', ['paid', 'in_payment'])]],
         {'fields': ['invoice_date', 'invoice_line_ids']}
     )
     logger.debug("Facturas encontradas: %s", invoices)
@@ -1139,11 +1150,16 @@ async def handle_associated_user_flow(conn, id_contact: int, contact_info: dict)
 
     # TODO: HACER MÁS VALIDACIONES O REFACTORIZAR
     pontis_data = await check_customer_in_pontis(pontis_customer_id)
+    logger.debug("Respuesta de Pontis: %s", pontis_data)
+
     if pontis_data.get("response") is None:
         logger.warning("El usuario MAP0%s NO existe en Pontis. Se omite 'delete_packages_in_pontis'.", id_user)
         # Mostrar mensaje de error si no hay respuesta
         raise HTTPException(status_code=500, detail="No existe registro en Pontis.")
     else:
+
+        # TODO: Verificar si tiene servicios que son el 6213,6214,6215, si solo tiene esos 3 significa que no requiere que le borremos los paquetes porque los servicios asi solos estan bien tal cual como estan, pero si tiene paquetes es decir otros valores aparte de los servicios ya mencionados hay que preguntar si el expireDt de esos ya caducó (cabe aclarar de los servicios no tienen expireDt, solo los paquetes tienen expireDt, tambien aclarar que los paquetes tiene estos id's, 6212,6217,6293,6294), en caso de que sí hayan caducado entonces ahi si usamos el delete_packages_in_pontis(pontis_customer_id), pero si no han caducado entonces el proceso se de detiene ya que el plan aun sigue activo
+
         # Ya existe => ahora sí eliminar
         res = await delete_packages_in_pontis(pontis_customer_id)
         logger.info("Respuesta de paquetes eliminados en Pontis para MAP0%s: %s", id_user, res)
@@ -1151,6 +1167,8 @@ async def handle_associated_user_flow(conn, id_contact: int, contact_info: dict)
             logger.info("Paquetes eliminados en Pontis: %s", pontis_customer_id)
         else:
             logger.warning("No se eliminaron paquetes en Pontis porque no habia nada que eliminar para MAP0%s.", id_user)
+
+        # -------------------------------------------------- HASTA ACA LA REFACTORIZACION QUE INDICA EL TODO------------------------------------------------
 
     update_data_customer = await build_update_customer_data(id_plan)
     logger.debug("Datos para actualizar en Pontis: %s", update_data_customer)
